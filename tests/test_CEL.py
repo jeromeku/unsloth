@@ -21,22 +21,6 @@ def model_path():
     return MODEL_CONFIG_PATH
 
 
-@pytest.fixture(scope="module")
-def tensors(bs, seqlen, hidden_size, vocab_size, dtype):
-    dtype = getattr(torch, dtype)
-    hidden_states = torch.randn(
-        bs, seqlen, hidden_size, dtype=dtype, device="cuda", requires_grad=True
-    )
-    lm_head_weight = torch.randn(
-        (vocab_size, hidden_size), dtype=dtype, device="cuda", requires_grad=True
-    )
-    labels = torch.randint(0, vocab_size, size=(bs, seqlen), device="cuda")
-    yield hidden_states, labels, lm_head_weight
-    # Cleanup
-    del hidden_states, labels, lm_head_weight
-    empty_cache()
-
-
 def ref_cel(hidden_states, lm_head_weight, labels):
     vocab_size = lm_head_weight.shape[0]
     logits = hidden_states @ lm_head_weight.T
