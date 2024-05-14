@@ -13,6 +13,7 @@ from cel_test_utils import (
     get_tokenizer,
     get_trainer_args,
 )
+from peft import LoraConfig, PeftModelForCausalLM, TaskType
 
 # from transformers.trainer_utils import enable_full_determinism
 from transformers.trainer_utils import set_seed as hf_set_seed
@@ -91,7 +92,7 @@ def get_model_and_tokenizer(args):
 
 
 def run_benchmark(args):
-    dtype = getattr(torch, args.dtype)
+    # dtype = getattr(torch, args.dtype)
     model, tokenizer = get_model_and_tokenizer(args)
 
     if args.overwrite_output_dir:
@@ -103,7 +104,7 @@ def run_benchmark(args):
         batch_size=args.batch_size,
         max_steps=args.max_steps,
         grad_accum_steps=args.grad_accum_steps,
-        dtype=dtype,
+        dtype=args.dtype,
         seed=SEED,
         output_dir=args.output_dir,
     )
@@ -193,7 +194,7 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
-        "--max_steps", type=int, default=10, help="Number of training steps"
+        "--max_steps", type=int, default=50, help="Number of training steps"
     )
     parser.add_argument(
         "--dtype", type=str, default="bfloat16", help="torch compute type"
@@ -203,13 +204,17 @@ if __name__ == "__main__":
         type=str,
         default="hf-internal-testing/tiny-random-LlamaForCausalLM",
         help="Path to the model, passed to huggingface `from_pretrained` method",
+        choices=[
+            "meta-llama/Meta-Llama-3-8B",
+            "hf-internal-testing/tiny-random-LlamaForCausalLM",
+        ],
     )
     parser.add_argument("--batch_size", type=int, default=2)
-    parser.add_argument("--max_seq_len", type=int, default=256)
+    parser.add_argument("--max_seq_len", type=int, default=512)
     parser.add_argument("--packing", action="store_true", default=True)
     parser.add_argument("--grad_accum_steps", type=int, default=1)
-    parser.add_argument("--load_in_4bit", action="store_true", default=False)
-    parser.add_argument("--use_lora", action="store_true", default=False)
+    parser.add_argument("--load_in_4bit", action="store_true", default=True)
+    parser.add_argument("--use_lora", action="store_true", default=True)
     parser.add_argument("--output_dir", type=str, default="outputs")
     parser.add_argument("--overwrite_output_dir", action="store_true", default=True)
     parser.add_argument("--print_accuracy", action="store_true", default=True)
@@ -219,7 +224,7 @@ if __name__ == "__main__":
         "--fused_cel_n_loop_iters",
         type=int,
         nargs="+",
-        default=[1, 2, 4],
+        default=[1, 2, 4, 8],
         help="""Number of loop iterations for fused CEL.  
         E.g., `n_loop_iters=4` will calculate the logits / loss in 4 chunks along sequence length.
         `batch_size * seqlen` must be divisible by `n_loop_iters`

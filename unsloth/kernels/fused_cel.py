@@ -121,7 +121,7 @@ class FusedCrossEntropyLossFunction(torch.autograd.Function):
         #     f"in_feat shape, contiguity, grad: {in_feat.shape}, {in_feat.is_contiguous(), in_feat.requires_grad}"
         # )
 
-        in_feat.requires_grad_(True)
+        # in_feat.requires_grad_(True)
         targ = targ.view(-1)
 
         n_tokens = in_feat.shape[0]
@@ -260,14 +260,27 @@ class FusedCrossEntropyLossFunction(torch.autograd.Function):
             (grad_in_feat,) = ctx.saved_tensors
 
         # Needed for gradient scaling?
+
         if grad_in_feat is not None and grad_in_feat.dtype == torch.float16:
             grad_in_feat = (grad_in_feat.to(torch.float32) * grad_output).to(
                 torch.float16
             )
+
         if grad_proj_weight is not None and grad_proj_weight.dtype == torch.float16:
             grad_proj_weight = (grad_proj_weight.to(torch.float32) * grad_output).to(
                 torch.float16
             )
+        if not (
+            any(
+                [
+                    (grad_in_feat is not None)
+                    and (grad_in_feat.dtype == torch.float16),
+                    (grad_proj_weight is not None)
+                    and (grad_proj_weight.dtype == torch.float16),
+                ]
+            )
+        ):
+            assert grad_output.item() == 1.0
 
         return grad_in_feat, grad_proj_weight, None, None, None, None
 

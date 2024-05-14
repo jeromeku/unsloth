@@ -84,27 +84,27 @@ def get_trainer_args(batch_size, grad_accum_steps, max_steps, dtype, seed, outpu
         skip_memory_metrics=False,
     )
     return training_args
+    # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
+
+
+LORA_TARGETS = [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj",
+]
 
 
 def get_peft_config(
-    target_modules="all-linear",
-    lora_alpha=8,
+    target_modules=LORA_TARGETS,
+    lora_alpha=16,
     lora_dropout=0.0,
     bias="none",
     task_type="CAUSAL_LM",
 ):
-    # accepted_modules = frozenset(
-    #     (
-    #         "q_proj",
-    #         "k_proj",
-    #         "v_proj",
-    #         "o_proj",
-    #         "gate_proj",
-    #         "up_proj",
-    #         "down_proj",
-    #     ),
-    # )
-
     peft_config = LoraConfig(
         target_modules=target_modules,
         lora_alpha=lora_alpha,
