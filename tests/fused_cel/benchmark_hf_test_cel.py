@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 from pathlib import Path
 
@@ -14,11 +15,13 @@ from cel_test_utils import (
     get_trainer_args,
 )
 from peft import LoraConfig, PeftModelForCausalLM, TaskType
+from transformers.trainer_utils import TrainerMemoryTracker
 
 # from transformers.trainer_utils import enable_full_determinism
 from transformers.trainer_utils import set_seed as hf_set_seed
 
 import unsloth.utils.data as data_utils
+from unsloth import FastLanguageModel
 from unsloth.kernels.fused_cel import patch_model as patch_model_fused_cel
 from unsloth.models._utils import patch_tokenizer, prepare_model_for_kbit_training
 from unsloth.utils.memory import empty_cache
@@ -27,6 +30,8 @@ parent_dir = Path(__file__).parent.absolute()
 SEED = 3407
 hf_set_seed(SEED)
 torch.autograd.set_detect_anomaly(True)
+# This is needed to use custom MetricsCallback
+TrainerMemoryTracker.stages.update({"_fast_inner_training_loop": "train"})
 
 import logging
 
@@ -91,9 +96,32 @@ def get_model_and_tokenizer(args):
     return model, tokenizer
 
 
+def get_fast_model_and_tokenizer(args):
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=args.model_id,
+        max_seq_length=args.max_seq_len,
+        dtype=getattr(torch, args.dtype),
+        load_in_4bit=args.load_in_4bit,
+    )
+    peft_config = get_peft_config().to_dict()
+    peft_config.pop("task_type")
+    model = FastLanguageModel.get_peft_model(
+        model,
+        **peft_config,
+        use_gradient_checkpointing=None,  # True or "unsloth" for very long context
+        random_state=SEED,
+        #    use_rslora=False,  # We support rank stabilized LoRA
+        #   loftq_config=None,  # And LoftQ
+    )
+    return model, tokenizer
+
+
 def run_benchmark(args):
     # dtype = getattr(torch, args.dtype)
-    model, tokenizer = get_model_and_tokenizer(args)
+    if "unsloth" in args.model_id:
+        model, tokenizer = get_fast_model_and_tokenizer(args)
+    else:
+        model, tokenizer = get_model_and_tokenizer(args)
 
     if args.overwrite_output_dir:
         import shutil
@@ -188,6 +216,9 @@ def run_benchmark(args):
     if args.print_metrics:
         print(consolidated_metrics.to_string())
 
+    with open(os.path.join(args.output_dir, "config.json"), "w") as f:
+        json.dump(vars(args), f, indent=4)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -207,6 +238,7 @@ if __name__ == "__main__":
         choices=[
             "meta-llama/Meta-Llama-3-8B",
             "hf-internal-testing/tiny-random-LlamaForCausalLM",
+            "unsloth/llama-3-8b-bnb-4bit",
         ],
     )
     parser.add_argument("--batch_size", type=int, default=2)
