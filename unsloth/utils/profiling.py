@@ -12,6 +12,9 @@ from torch.profiler._memory_profiler import (
 )
 from transformers.trainer_callback import ProgressCallback, TrainerCallback
 from transformers.trainer_pt_utils import _secs2timedelta
+from xformers.profiler.device_limits import get_device_limits
+
+from .profiling_analyzer import AnalyzedTrace
 
 # Prints filename and line number when logging
 LOG_FORMAT_STR = (
@@ -118,11 +121,34 @@ class CudaProfilerCtx:
 TIME_FORMAT_STR: str = "%m_%d"
 
 
+def analyze_trace(prof):
+    results = AnalyzedTrace.from_profile(prof.profiler.kineto_results.events())
+    dtype_to_flops = get_device_limits(torch.device("cuda"))
+    hw_flops = {}
+    if dtype_to_flops is not None:
+        for dtype, flops in dtype_to_flops.items():
+            hw_flops[dtype] = flops
+    total_flops = 0.0
+    total_hfu = 0.0
+    total_mfu = 0.0
+    for dtype in results.operations_per_dtype_fw.keys():
+        total_flops += results.compute_num_ops(dtype) / results.total_time_s
+        total_hfu += results.compute_hfu(hw_flops)
+        total_mfu += results.compute_mfu(hw_flops)
+
+    hw_flops.update(("Step time (ms)", int(results.total_time_s * 1000)))
+    hw_flops.update(("TFlops", total_flops / (1000**4)))
+    hw_flops.update(("HFU", total_hfu))
+    hw_flops.update(("MFU", total_mfu))
+    return hw_flops
+
+
 def trace_handler(
     prof: torch.profiler.profile,
     group_by_stack: int = 0,
     group_by_input_shapes: bool = False,
     with_stack: bool = True,
+    with_flops: bool = True,
     prefix="",
     out_dir="./torch_profile",
     export_events=True,
@@ -159,6 +185,8 @@ def trace_handler(
     if with_stack:
         prof.export_stacks(f"{file_prefix}-stacks.txt")
 
+    if with_flops:
+        analyze_traces(prof)
     print(
         prof.key_averages(
             group_by_input_shape=group_by_input_shapes, group_by_stack_n=group_by_stack
@@ -207,6 +235,7 @@ class TorchProfiler:
             group_by_input_shapes=group_by_input_shapes,
             group_by_stack=group_by_stack,
             with_stack=with_stack,
+            with_flops=with_flops,
             prefix=prefix,
             out_dir=out_dir,
         )
