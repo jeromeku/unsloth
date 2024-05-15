@@ -3,6 +3,7 @@
 # This source code is licensed under the BSD license found in the
 # LICENSE file in the root directory of this source tree.
 
+import json
 import math
 from collections import defaultdict
 from dataclasses import dataclass
@@ -146,6 +147,17 @@ class AnalyzedTrace:
                 / hw_flops
             )
         return hfu_seconds / self.total_time_s
+
+    def as_dict(self):
+        return dict(
+            operations_per_dtype_fw=self.operations_per_dtype_fw,
+            operations_per_dtype_bw=self.operations_per_dtype_bw,
+            total_time_s=self.total_time_s,
+        )
+
+    def save_json(self, path: str):
+        with open(path, "w") as f:
+            json.dump(self.as_dict(), f)
 
     @staticmethod
     def from_profile(

@@ -1,21 +1,35 @@
 import dataclasses
+import functools
 import json
 import os
+import textwrap
 import types
 from datetime import datetime
 from functools import partial
+from typing import Dict, List, Tuple
 
 import pandas as pd
 import torch
+from torch._C._profiler import _EventType, _TensorMetadata
+from torch.profiler import _memory_profiler
 from torch.profiler._memory_profiler import (
+    _ACTION_TO_INDEX,
+    _CATEGORY_TO_INDEX,
+    Action,
+    Category,
     MemoryProfileTimeline,
 )
+from torch.utils import _pytree as pytree
 from transformers.trainer_callback import ProgressCallback, TrainerCallback
 from transformers.trainer_pt_utils import _secs2timedelta
-from xformers.profiler.device_limits import get_device_limits
 
+from .device_limits import get_device_limits
 from .profiling_analyzer import AnalyzedTrace
 
+INDEX_TO_ACTION = {v: k for k, v in _ACTION_TO_INDEX.items()}
+ACTION_TO_NAME = {v: k for k, v in Action._member_map_.items()}
+INDEX_TO_CATEGORY = {v: k for k, v in _CATEGORY_TO_INDEX.items()}
+CATEGORY_TO_NAME = {v: k for k, v in Category._member_map_.items()}
 # Prints filename and line number when logging
 LOG_FORMAT_STR = (
     "%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s"
@@ -121,7 +135,7 @@ class CudaProfilerCtx:
 TIME_FORMAT_STR: str = "%m_%d"
 
 
-def analyze_trace(prof):
+def analyze_flops(prof):
     results = AnalyzedTrace.from_profile(prof.profiler.kineto_results.events())
     dtype_to_flops = get_device_limits(torch.device("cuda"))
     hw_flops = {}
@@ -140,7 +154,7 @@ def analyze_trace(prof):
     hw_flops.update(("TFlops", total_flops / (1000**4)))
     hw_flops.update(("HFU", total_hfu))
     hw_flops.update(("MFU", total_mfu))
-    return hw_flops
+    return hw_flops, results
 
 
 def trace_handler(
@@ -175,10 +189,11 @@ def trace_handler(
         prof.export_memory_timeline(
             f"{file_prefix}-memory-timeline.html", device="cuda:0"
         )
-        prof.export_memory_timeline(
-            f"{file_prefix}-memory-timeline.json", device="cuda:0"
-        )
+        # prof.export_memory_timeline(
+        #     f"{file_prefix}-memory-timeline.json", device="cuda:0"
+        # )
         mem_tl = MemoryProfileTimeline(prof._memory_profile())
+        torch.save(mem_tl, f"{file_prefix}-memory-timeline.pt")
         mem_tl.export_memory_timeline_raw(
             f"{file_prefix}-memory-timeline_raw.json", device_str="cuda:0"
         )
@@ -186,7 +201,11 @@ def trace_handler(
         prof.export_stacks(f"{file_prefix}-stacks.txt")
 
     if with_flops:
-        analyze_traces(prof)
+        hw_flops, flop_analysis = analyze_flops(prof)
+        with open(f"{file_prefix}-hw_flops.json", "w") as f:
+            json.dump(hw_flops, f)
+        with open(f"{file_prefix}-flop_analysis.json", "w") as f:
+            json.dump(flop_analysis.as_dict(), f)
     print(
         prof.key_averages(
             group_by_input_shape=group_by_input_shapes, group_by_stack_n=group_by_stack
@@ -365,4 +384,162 @@ def pivot_df(
         df = df[column_order]
     if show:
         print(df.to_string(index=False))
+    return df
+
+
+class RecordInputOutputDispatchMode(torch.utils._python_dispatch.TorchDispatchMode):
+    def __init__(self):
+        self.results = []
+
+    def mark_region(self, name: str):
+        self.results.append((name, (), ()))
+
+    @staticmethod
+    def flat_ids(args):
+        flat_args = pytree.tree_leaves(args)
+        return tuple(
+            (t._cdata, t.storage().data_ptr())
+            for t in flat_args
+            if isinstance(t, torch.Tensor) and t.storage()
+        )
+
+    def __torch_dispatch__(self, func, types, args=..., kwargs=None):
+        args = args or []
+        kwargs = kwargs or {}
+        flat_inputs = self.flat_ids(args) + self.flat_ids(kwargs)
+        out = func(*args, **kwargs)
+        flat_outputs = self.flat_ids(out)
+        if (
+            flat_inputs or flat_outputs
+        ) and "_record_function_enter" not in func.name():
+            self.results.append((func.name(), flat_inputs, flat_outputs))
+        return out
+
+
+profile = functools.partial(
+    torch.profiler.profile, record_shapes=True, profile_memory=True, with_stack=True
+)
+
+from dataclasses import dataclass
+
+
+@dataclass
+class TorchOpNode:
+    name: str
+    inputs: list
+    outputs: list
+
+
+def _run_and_format_categories(profiler, fn, indent=12):
+    """Generate summary of assigned categories for inputs and outputs of each op in the profiler op_tree."""
+
+    # Use `__torch_dispatch__` to collect ground truth.
+    with RecordInputOutputDispatchMode() as record_ops, profiler as prof:
+        fn(lambda name: record_ops.mark_region(f"-- {name} ".ljust(105, "-")))
+
+    memory_profile = prof._memory_profile()
+    ptr_pair_to_key: Dict[Tuple[int, int], _memory_profiler.TensorKey] = {}
+    snapshot = memory_profile._category_snapshot()
+
+    # Build map from observed live Tensors to the memory profiler's
+    # TensorKey representation.
+    for op in memory_profile._op_tree.dfs():
+        if op.typed[0] == _EventType.TorchOp:
+            inputs = pytree.tree_leaves(op.typed[1].inputs)
+            for t in (i for i in inputs if isinstance(i, _TensorMetadata)):
+                key = _memory_profiler.TensorKey.from_tensor(t)
+                if key:
+                    ptr_pair_to_key[(t.impl_ptr, t.storage_data_ptr)] = key
+
+    def format_categories(ptr_pair: int, return_str=True):
+        target_key = ptr_pair_to_key.get(ptr_pair, None)
+        if target_key is None:
+            return "???"
+
+        matches = tuple(
+            (version, category.name if category else "???")
+            for (key, version), category in snapshot.items()
+            if key == target_key
+        )
+        assert matches, "Failed to lookup Tensor"
+
+        # Deduplicate version bumps which don't change the category.
+        categories = [matches[0][1]]
+        for _, category in matches:
+            if category != categories[-1]:
+                categories.append(category)
+
+        return (
+            f"{target_key.storage.allocation_id} ({','.join(categories)})"
+            if return_str
+            else (target_key, categories)
+        )
+
+    # , (
+    #         target_key,
+    #         categories,
+    #     )
+
+    out: List[str] = []
+    raw_out = []
+
+    for name, inputs, outputs in record_ops.results:
+        if inputs or outputs:
+            # PyTorch ops
+            inputs_str = ", ".join(format_categories(i) for i in inputs)
+            input_keys = [format_categories(i, return_str=False) for i in inputs]
+            outputs_str = ", ".join(format_categories(i) for i in outputs)
+            output_keys = [format_categories(i, return_str=False) for i in outputs]
+            out.append(f"{name:<40} {inputs_str:<45} -> {outputs_str}")
+            raw_out.append(TorchOpNode(name, input_keys, output_keys))
+        else:
+            # Marked regions.
+            out.append(f"\n{name}")
+            raw_out.append(TorchOpNode(name, (), ()))
+    print(textwrap.indent("\n".join(out), " " * indent))
+    return out, raw_out
+
+
+MEMORY_EVENT_HEADERS = [
+    "ts",
+    "key",
+    "id",
+    "storage",
+    "device",
+    "version",
+    "action_enum",
+    "category_enum",
+    "num_bytes",
+]
+
+
+def add_category_to_tl(x, categories):
+    ts, action, (key, version), num_bytes = x
+
+    id = key.id if hasattr(key, "id") else None
+    storage = key.storage if hasattr(key, "storage") else None
+    return (
+        ts,
+        key,
+        id,
+        storage,
+        key.device.type,
+        version,
+        action,
+        categories.get(key, version),
+        num_bytes,
+    )
+
+
+def create_memory_df(mem_timeline: MemoryProfileTimeline):
+    """Create a dataframe from a torch.profiler._memory_profiler.MemoryProfileTimeline"""
+    full_tl = list(
+        map(
+            partial(add_category_to_tl, categories=mem_timeline.categories),
+            mem_timeline.timeline,
+        )
+    )
+    df = pd.DataFrame(full_tl, columns=MEMORY_EVENT_HEADERS)
+    df["category"] = df["category_enum"].map(CATEGORY_TO_NAME).fillna("UNKNOWN")
+    df["action"] = df["action_enum"].map(ACTION_TO_NAME).fillna("UNKNOWN")
     return df

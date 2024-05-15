@@ -147,6 +147,13 @@ _CUDA_FLOPS: Dict[str, Dict[Union[str, torch.dtype], float]] = {
         torch.int8: 162.6e12,
         "int4": 325.2e12,
     },
+    # source: https://www.techpowerup.com/gpu-specs/geforce-rtx-3050-4-gb.c3744
+    "rtx 3050": {
+        torch.float32: 7.127e12,
+        torch.float16: 7.127e12,
+        torch.bfloat16: 7.127e12,
+        torch.float64: 111.4e9,
+    },
     # Turing
     # source: https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/tesla-t4/t4-tensor-core-datasheet-951643.pdf
     # sxm and pcie have same flop counts
@@ -373,7 +380,7 @@ DEVICE_LIMITS: Tuple[DeviceLimit, ...] = (
 )
 
 
-def get_device_limits(device) -> DeviceLimit:
+def get_device_limits(device=None) -> DeviceLimit:
     """Currently only implemented for GPUs"""
     dtype_to_flops = get_available_flops()
     # if device is not None and device.type == "cuda":
