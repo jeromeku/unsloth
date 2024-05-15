@@ -116,12 +116,23 @@ def get_fast_model_and_tokenizer(args):
     return model, tokenizer
 
 
-def run_benchmark(args):
-    # dtype = getattr(torch, args.dtype)
+def setup(args):
     if "unsloth" in args.model_id:
         model, tokenizer = get_fast_model_and_tokenizer(args)
+        peft_config = None  # This is already integrated into the model
     else:
         model, tokenizer = get_model_and_tokenizer(args)
+        peft_config = get_peft_config() if args.use_lora or args.load_in_4bit else None
+        if args.load_in_4bit:
+            model = prepare_model_for_kbit_training(
+                model, use_gradient_checkpointing=False
+            )
+    return model, tokenizer, peft_config
+
+
+def run_benchmark(args):
+    # dtype = getattr(torch, args.dtype)
+    model, tokenizer, peft_config = setup(args)
 
     if args.overwrite_output_dir:
         import shutil
@@ -136,11 +147,6 @@ def run_benchmark(args):
         seed=SEED,
         output_dir=args.output_dir,
     )
-    peft_config = get_peft_config() if args.use_lora or args.load_in_4bit else None
-    if args.load_in_4bit:
-        model = prepare_model_for_kbit_training(
-            model, use_gradient_checkpointing=training_args.gradient_checkpointing
-        )
 
     dataset = data_utils.get_alpaca(tokenizer)
 
@@ -165,7 +171,7 @@ def run_benchmark(args):
 
     for n_loop_iters in args.fused_cel_n_loop_iters:
         # Run with fused CEL
-        model, tokenizer = get_model_and_tokenizer(args)
+        model, tokenizer, peft_config = setup(args)
         run_train_loop(
             model=model,
             tokenizer=tokenizer,

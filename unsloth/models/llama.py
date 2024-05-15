@@ -990,7 +990,6 @@ def CausalLM_fast_forward(fast_forward_inference):
                 logits = self.lm_head(hidden_states.to(lm_head.dtype))
             pass
             logits = logits.to(self.config.torch_dtype)
-            print(f"{logits.dtype} -> {self.config.torch_dtype}")
             loss = None
             if labels is not None:
                 shift_logits = logits
