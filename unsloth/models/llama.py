@@ -929,6 +929,7 @@ def CausalLM_fast_forward(fast_forward_inference):
                 attention_mask=attention_mask,
             )
         else:
+            with torch.profiler.record_function("##causal_attention")
             causal_mask = xformers.attn_bias.LowerTriangularMask()
 
             output_attentions = (
@@ -947,67 +948,68 @@ def CausalLM_fast_forward(fast_forward_inference):
 
             # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
             self.model._has_no_labels = labels is None
-
-            outputs = self.model(
-                input_ids=input_ids,
-                causal_mask=causal_mask,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_values=past_key_values,
-                inputs_embeds=inputs_embeds,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
+            with torch.profiler.record_function("##decoder"):
+                outputs = self.model(
+                    input_ids=input_ids,
+                    causal_mask=causal_mask,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_values=past_key_values,
+                    inputs_embeds=inputs_embeds,
+                    use_cache=use_cache,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    return_dict=return_dict,
+                )
         pass
 
         hidden_states = outputs[0]
         bsz, q_len, hd = hidden_states.shape
         lm_head = self.lm_head.weight
 
-        if hasattr(self.config, "fused_cel") and self.config.fused_cel.use_fused_cel:
-            logger.warning_once(
-                "Using fused cross entropy loss, output logits will be in None"
-            )
-            assert labels is not None, "labels must not be None to use fused CEL"
+        with torch.profiler.record_function("##CEL"):
+            if hasattr(self.config, "fused_cel") and self.config.fused_cel.use_fused_cel:
+                logger.warning_once(
+                    "Using fused cross entropy loss, output logits will be in None"
+                )
+                assert labels is not None, "labels must not be None to use fused CEL"
 
-            loss = fused_cel_layer(
-                hidden_states,
-                lm_head,
-                labels,
-                n_loop_iters=self.config.fused_cel.n_loop_iters,
-                ignore_index=self.config.fused_cel.ignore_index,
-                reduction="mean",
-            )
+                loss = fused_cel_layer(
+                    hidden_states,
+                    lm_head,
+                    labels,
+                    n_loop_iters=self.config.fused_cel.n_loop_iters,
+                    ignore_index=self.config.fused_cel.ignore_index,
+                    reduction="mean",
+                )
 
-            logits = None
-        else:
-            if bsz == 1 and q_len == 1:
-                logits = torch.mv(lm_head, hidden_states.ravel().to(lm_head.dtype))
-                logits = logits.unsqueeze(0).unsqueeze(0)
+                logits = None
             else:
-                logits = self.lm_head(hidden_states.to(lm_head.dtype))
-            pass
-            logits = logits.to(self.config.torch_dtype)
-            loss = None
-            if labels is not None:
-                shift_logits = logits
-                if not hasattr(self, "extra_ignored_labels"):
-                    # Fixes https://github.com/unslothai/unsloth/issues/10
-                    self.extra_ignored_labels = torch.full(
-                        (self.max_seq_length, 1), -100, device="cuda"
+                if bsz == 1 and q_len == 1:
+                    logits = torch.mv(lm_head, hidden_states.ravel().to(lm_head.dtype))
+                    logits = logits.unsqueeze(0).unsqueeze(0)
+                else:
+                    logits = self.lm_head(hidden_states.to(lm_head.dtype))
+                pass
+                logits = logits.to(self.config.torch_dtype)
+                loss = None
+                if labels is not None:
+                    shift_logits = logits
+                    if not hasattr(self, "extra_ignored_labels"):
+                        # Fixes https://github.com/unslothai/unsloth/issues/10
+                        self.extra_ignored_labels = torch.full(
+                            (self.max_seq_length, 1), -100, device="cuda"
+                        )
+                    pass
+
+                    shift_labels = torch.hstack(
+                        (labels[..., 1:], self.extra_ignored_labels[: labels.shape[0]])
+                    )
+                    loss = fast_cross_entropy_loss(
+                        logits=shift_logits,
+                        labels=shift_labels,
                     )
                 pass
-
-                shift_labels = torch.hstack(
-                    (labels[..., 1:], self.extra_ignored_labels[: labels.shape[0]])
-                )
-                loss = fast_cross_entropy_loss(
-                    logits=shift_logits,
-                    labels=shift_labels,
-                )
-            pass
 
         if not return_dict:
             output = (logits,) + outputs[1:]
