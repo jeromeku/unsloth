@@ -430,6 +430,10 @@ class TorchOpNode:
     outputs: list
 
 
+# https://github.com/pytorch/pytorch/blob/c1dc8bb85840213121f2afcda92e361c5e8ae444/torch/csrc/profiler/collection.h#L31
+# https://github.com/pytorch/pytorch/blob/44e47d5bd03b0a1f3e131f49d7e386a64c073236/torch/csrc/profiler/data_flow.h#L30
+# https://github.com/pytorch/pytorch/blob/c1dc8bb85840213121f2afcda92e361c5e8ae444/torch/_C/_profiler.pyi#L79
+# https://github.com/pytorch/pytorch/blob/b659506d821b29563a24ed8059160eb5e587619d/test/profiler/test_memory_profiler.py
 def _run_and_format_categories(profiler, fn, indent=12):
     """Generate summary of assigned categories for inputs and outputs of each op in the profiler op_tree."""
 
