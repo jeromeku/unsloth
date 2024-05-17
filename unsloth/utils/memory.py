@@ -65,17 +65,32 @@ def pretty_mem(preamble: str, context: str, device_ix=0):
 
 class TorchMemCtx:
     def __enter__(self):
-        self.begin = torch.cuda.memory_allocated()
+        self.begin_alloc = torch.cuda.memory_allocated()
+        self.begin_reserved = torch.cuda.memory_reserved()
         torch.cuda.reset_max_memory_allocated()
         return
 
     def __exit__(self, *exc):
         torch.cuda.synchronize()
-        end = torch.cuda.memory_allocated()
-        peak = torch.cuda.max_memory_allocated()
-        print("Begin memory allocated:", self.begin)
-        print(f"Memory allocated (end - begin): {mib_str(end - self.begin)}")
-        print(f"Peak memory allocated (max - begin): {mib_str(peak - self.begin)}")
+        end_alloc = torch.cuda.memory_allocated()
+        peak_alloc = torch.cuda.max_memory_allocated()
+        end_reserved = torch.cuda.memory_reserved()
+        peak_reserved = torch.cuda.max_memory_reserved()
+        print("Begin memory allocated:", self.begin_alloc)
+        print(
+            f"Memory allocated (end - begin): {mib_str(end_alloc - self.begin_alloc)}"
+        )
+        print(
+            f"Peak memory allocated (max - begin): {mib_str(peak_alloc - self.begin_alloc)}"
+        )
+
+        print("Begin memory reserved:", self.begin_reserved)
+        print(
+            f"Memory reserved (end - begin): {mib_str(end_reserved - self.begin_reserved)}"
+        )
+        print(
+            f"Peak memory reserved (max - begin): {mib_str(peak_reserved - self.begin_reserved)}"
+        )
 
 
 def memory_hook_fn(
