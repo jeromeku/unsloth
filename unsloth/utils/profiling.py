@@ -150,10 +150,12 @@ def analyze_flops(prof):
         total_hfu += results.compute_hfu(hw_flops)
         total_mfu += results.compute_mfu(hw_flops)
 
-    hw_flops.update(("Step time (ms)", int(results.total_time_s * 1000)))
-    hw_flops.update(("TFlops", total_flops / (1000**4)))
-    hw_flops.update(("HFU", total_hfu))
-    hw_flops.update(("MFU", total_mfu))
+    hw_flops.update({"Step time (ms)": int(results.total_time_s * 1000)})
+    hw_flops.update({"TFlops": total_flops / (1000**4)})
+    hw_flops.update({"HFU": total_hfu})
+    hw_flops.update({"MFU": total_mfu})
+    # Convert all hw_flops keys to str
+    hw_flops = {str(k): v for k, v in hw_flops.items()}
     return hw_flops, results
 
 
@@ -204,8 +206,9 @@ def trace_handler(
         hw_flops, flop_analysis = analyze_flops(prof)
         with open(f"{file_prefix}-hw_flops.json", "w") as f:
             json.dump(hw_flops, f)
-        with open(f"{file_prefix}-flop_analysis.json", "w") as f:
-            json.dump(flop_analysis.as_dict(), f)
+        # with open(f"{file_prefix}-flop_analysis.json", "w") as f:
+        #     json.dump(flop_analysis.as_dict(), f)
+        flop_analysis.save_json(f"{file_prefix}-flop_analysis")
     print(
         prof.key_averages(
             group_by_input_shape=group_by_input_shapes, group_by_stack_n=group_by_stack

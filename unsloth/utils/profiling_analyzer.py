@@ -117,6 +117,9 @@ class AnalyzedTrace:
     operations_per_dtype_fw: Dict[torch.dtype, float]
     operations_per_dtype_bw: Dict[torch.dtype, float]
     total_time_s: float
+    ops_list: list[torch._C._autograd._KinetoEvent]
+    fwd_ops: list[torch._C._autograd._KinetoEvent]
+    bwd_ops: list[torch._C._autograd._KinetoEvent]
 
     def compute_num_ops(
         self, dtype: torch.dtype, fw: bool = True, bw: bool = True
@@ -153,11 +156,21 @@ class AnalyzedTrace:
             operations_per_dtype_fw=self.operations_per_dtype_fw,
             operations_per_dtype_bw=self.operations_per_dtype_bw,
             total_time_s=self.total_time_s,
+            fwd_ops=self.fwd_ops,
+            bw_ops=self.bw_ops,
+            ops_list=self.ops_list,
         )
 
     def save_json(self, path: str):
-        with open(path, "w") as f:
-            json.dump(self.as_dict(), f)
+        try:
+            with open(path + ".json", "w") as f:
+                json.dump(self.as_dict(), f)
+        except Exception as e:
+            print(f"Error saving json: {e}")
+            try:
+                torch.save(self.as_dict(), path + ".pt")
+            except Exception as e:
+                print(f"Error saving torch: {e}")
 
     @staticmethod
     def from_profile(
@@ -196,10 +209,12 @@ class AnalyzedTrace:
                     candidate = parent
             return candidate
 
+        ops_list = defaultdict(list)
         for op in all_ops:
             if op.flops() == 0:
                 continue
             root_ops.add(_find_parent_op(op))
+            ops_list[_find_parent_op(op)].append(op)
 
         operations_per_dtype_fw: Dict[torch.dtype, float] = defaultdict(float)
         operations_per_dtype_bw: Dict[torch.dtype, float] = defaultdict(float)
@@ -215,6 +230,8 @@ class AnalyzedTrace:
             ("c10::BFloat16", torch.float16),
             ("c10::Int8", torch.int8),
         ]
+
+        fwd_ops, bwd_ops = [], []
         begin_ns, end_ns = math.inf, 0
         for op in root_ops:
             dtype = None
@@ -226,8 +243,10 @@ class AnalyzedTrace:
                 continue
             if op.start_thread_id() in all_bw_threads:
                 operations_per_dtype_bw[dtype] += op.flops()
+                fwd_ops.append(op)
             else:
                 operations_per_dtype_fw[dtype] += op.flops()
+                bwd_ops.append(op)
         for op in events:
             if op.device_type().name != "CUDA":
                 continue
@@ -238,4 +257,7 @@ class AnalyzedTrace:
             operations_per_dtype_fw=operations_per_dtype_fw,
             operations_per_dtype_bw=operations_per_dtype_bw,
             total_time_s=(end_ns - begin_ns) / (10**9),
+            ops_list=ops_list,
+            fwd_ops=fwd_ops,
+            bwd_ops=bwd_ops,
         )
