@@ -3,12 +3,35 @@ from functools import partial
 from typing import Optional, Tuple
 
 import torch
+from tabulate import tabulate
 from torch import Tensor
 from torch.nn import GELU, Linear, Module
 
 
-def get_memory_stats():
-    print(torch.cuda.memory_summary())
+def get_memory_stats(device="cuda:0", return_dict=False):
+    # if show_summary:
+    #     print(torch.cuda.memory_summary())
+
+    stats = torch.cuda.memory_stats_as_nested_dict(device)
+    # active = stats["active_bytes"]["all"]
+    # allocated = stats["allocated_bytes"]["all"]
+    # reserved = stats["reserved_bytes"]["all"]
+
+    keys = ["current", "peak", "allocated", "freed"]
+    header = ["", "Current", "Peak", "Allocated", "Freed"]
+    segments = ["active_bytes", "allocated_bytes", "reserved_bytes"]
+    mem_summary = []
+    for segment in segments:
+        label = segment.split("_")[0]
+        mem_summary.append(
+            [label, *[f'{mib_str(stats[segment]["all"][k])}' for k in keys]]
+        )
+
+    if return_dict:
+        d = {s[0]: {k: v for k, v in zip(keys, s[1:])} for s in mem_summary}
+        return d
+    else:
+        return tabulate(mem_summary, headers=header)
 
 
 def get_max_memory_reserved():
@@ -64,10 +87,17 @@ def pretty_mem(preamble: str, context: str, device_ix=0):
 
 
 class TorchMemCtx:
+    def __init__(self, print_reserved=True):
+        self.print_reserved = print_reserved
+
     def __enter__(self):
         self.begin_alloc = torch.cuda.memory_allocated()
+        self.begin_max_alloc = torch.cuda.max_memory_allocated()
         self.begin_reserved = torch.cuda.memory_reserved()
-        torch.cuda.reset_max_memory_allocated()
+        self.begin_max_reserved = torch.cuda.max_memory_reserved()
+        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.synchronize()
+        print(f" After reset: {mib_str(torch.cuda.max_memory_allocated())}")
         return
 
     def __exit__(self, *exc):
@@ -76,21 +106,21 @@ class TorchMemCtx:
         peak_alloc = torch.cuda.max_memory_allocated()
         end_reserved = torch.cuda.memory_reserved()
         peak_reserved = torch.cuda.max_memory_reserved()
-        print("Begin memory allocated:", self.begin_alloc)
+        print("Memory Stats (Before / After):")
         print(
-            f"Memory allocated (end - begin): {mib_str(end_alloc - self.begin_alloc)}"
+            f"  Allocated: {mib_str(self.begin_alloc)} / {mib_str(end_alloc)} -> {mib_str(end_alloc - self.begin_alloc)}"
         )
-        print(
-            f"Peak memory allocated (max - begin): {mib_str(peak_alloc - self.begin_alloc)}"
-        )
-
-        print("Begin memory reserved:", self.begin_reserved)
-        print(
-            f"Memory reserved (end - begin): {mib_str(end_reserved - self.begin_reserved)}"
-        )
-        print(
-            f"Peak memory reserved (max - begin): {mib_str(peak_reserved - self.begin_reserved)}"
-        )
+        print(f"  Peak: {mib_str(peak_alloc)}")
+        print(f"  Peak delta: {mib_str(peak_alloc - self.begin_alloc)}")
+        if self.print_reserved:
+            print("  -------------------------------------------------- ")
+            print(
+                f"  Reserved: {mib_str(self.begin_reserved)} / {mib_str(end_reserved)}"
+            )
+            print(
+                f"  Max Reserved: {mib_str(self.begin_max_reserved)} / {mib_str(peak_reserved)}"
+            )
+            print("  -------------------------------------------------- ")
 
 
 def memory_hook_fn(
