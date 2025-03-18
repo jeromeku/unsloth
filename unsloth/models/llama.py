@@ -12,61 +12,77 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
+import functools
 import gc
 import math
-import functools
-from typing import Optional, Tuple, List, Union
-from ._utils import *
-from ._utils import patch_unsloth_smart_gradient_checkpointing
-from ._utils import __version__
+from typing import List, Optional, Tuple, Union
+
+import torch
 from torch.nn.functional import scaled_dot_product_attention
 from transformers import __version__ as transformers_version
 from unsloth_zoo.utils import Version, _get_dtype
+
+from ._utils import *
+from ._utils import __version__, patch_unsloth_smart_gradient_checkpointing
+
 transformers_version = Version(transformers_version)
 # Transformers moved rotary embeddings out of all attention layers
 IS_ATTENTION_REFACTOR = transformers_version > Version("4.47.1")
-from transformers.models.llama.modeling_llama import (
-    logger,
-    BaseModelOutputWithPast,
-    CausalLMOutputWithPast,
-)
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
+from transformers.models.llama.modeling_llama import (
+    BaseModelOutputWithPast,
+    CausalLMOutputWithPast,
+    logger,
+)
+
 from ..kernels import *
 from ..tokenizer_utils import *
+
 if HAS_FLASH_ATTENTION:
     from flash_attn import flash_attn_func
-from .vision import FastBaseModel
-
 # Final patching code
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
     LlamaDecoderLayer,
-    LlamaModel,
     LlamaForCausalLM,
+    LlamaModel,
 )
+
+from .vision import FastBaseModel
 
 # For Pytorch 2.1.1
 try:
     from transformers.models.llama.modeling_llama import (
-        LlamaSdpaAttention,
         LlamaFlashAttention2,
+        LlamaSdpaAttention,
     )
 except:
     LlamaSdpaAttention   = LlamaAttention
     LlamaFlashAttention2 = LlamaAttention
 pass
 
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, AutoConfig
-from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING
-from transformers import set_seed as transformers_set_seed
-from peft import LoraConfig, TaskType, get_peft_model as _get_peft_model
-from peft import PeftModelForCausalLM
-from ..save import patch_saving_functions
-import re, os, inspect, math, sys
+import inspect
+import math
+import os
+import re
+import sys
 import types
+
+from peft import LoraConfig, PeftModelForCausalLM, TaskType
+from peft import get_peft_model as _get_peft_model
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+)
+from transformers import set_seed as transformers_set_seed
+from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING
+
+from ..save import patch_saving_functions
+
 try:
     from huggingface_hub.utils import get_token
 except:
@@ -74,6 +90,7 @@ except:
     from huggingface_hub.utils._token import get_token
 pass
 from triton import __version__ as triton_version
+
 HAS_XFORMERS = xformers is not None
 BlockDiagonalCausalMask = xformers.attn_bias.BlockDiagonalCausalMask if HAS_XFORMERS else None
 
@@ -92,6 +109,7 @@ def original_apply_o(self, X):
 pass
 
 from math import sqrt as math_sqrt
+
 KV_CACHE_INCREMENT = 512 # KV Cache update size
 torch_nn_functional_softmax = torch.nn.functional.softmax
 # SDPA has GQA internally
@@ -1794,10 +1812,10 @@ class FastLlamaModel:
             model.fast_generate_batches = None
         else:
             from unsloth_zoo.vllm_utils import (
-                load_vllm,
-                get_vllm_state_dict,
                 convert_vllm_to_huggingface,
                 generate_batches,
+                get_vllm_state_dict,
+                load_vllm,
             )
             allowed_args = inspect.getfullargspec(load_vllm).args
             load_vllm_kwargs = dict(
@@ -1811,6 +1829,7 @@ class FastLlamaModel:
                 max_lora_rank          = max_lora_rank,
                 disable_log_stats      = disable_log_stats,
                 use_bitsandbytes       = load_in_4bit,
+                enforce_eager          = False if os.environ.get("USE_CUDAGRAPH", "0") == "1" else True,
             )
             for allowed_arg in allowed_args:
                 if allowed_arg not in load_vllm_kwargs and allowed_arg in kwargs:
@@ -2446,7 +2465,7 @@ class FastLlamaModel:
             model.fast_generate_batches = vllm_fast_generate_batches
 
             # Also saving and loading LoRA
-            from unsloth_zoo.vllm_utils import save_lora, load_lora
+            from unsloth_zoo.vllm_utils import load_lora, save_lora
             model.save_lora = functools.partial(save_lora, model)
             model.load_lora = functools.partial(load_lora, model)
         pass
@@ -2515,7 +2534,7 @@ class FastLlamaModel:
             # model.peft_config[active_adapter].revision = f"unsloth"
         pass
 
-        from transformers.trainer import Trainer 
+        from transformers.trainer import Trainer
         if Trainer._inner_training_loop.__name__ != "_fast_inner_training_loop":
             raise RuntimeError("Unsloth: Unsuccessfully patched Trainer! Please file a bug report!")
         pass
@@ -2666,7 +2685,7 @@ class FastLlamaModel:
             model.fast_generate_batches = model.model.fast_generate_batches
 
             # Also saving and loading LoRA
-            from unsloth_zoo.vllm_utils import save_lora, load_lora
+            from unsloth_zoo.vllm_utils import load_lora, save_lora
             model.save_lora = functools.partial(save_lora, model)
             model.load_lora = functools.partial(load_lora, model)
         pass
@@ -2749,4 +2768,5 @@ class FastLlamaModel:
 pass
 
 from .rl import PatchFastRL
+
 PatchFastRL(FastLanguageModel = FastLlamaModel)
