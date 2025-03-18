@@ -1,0 +1,54 @@
+USE_CUDAGRAPH: False
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+DEBUG::VLLLM VLLM_LOGGING_CONFIG_PATH None
+Namespace(merged_model='grpo_saved_merged_cudagraph=True_runid=20250317_1525', adapter_path=None, original_model='Qwen/Qwen2.5-3B-Instruct', use_vllm=False, temperature=0.8)
+Using merged model...
+==((====))==  Unsloth 2025.3.14: Fast Qwen2 patching. Transformers: 4.49.0. vLLM: 0.7.3.
+   \\   /|    NVIDIA H100 80GB HBM3. Num GPUs = 1. Max memory: 79.109 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.5.1+cu124. CUDA: 9.0. CUDA Toolkit: 12.4. Triton: 3.1.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.28.post3. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:00<00:00,  1.03it/s]Loading checkpoint shards: 100%|██████████| 2/2 [00:01<00:00,  1.48it/s]Loading checkpoint shards: 100%|██████████| 2/2 [00:01<00:00,  1.39it/s]
+Using merged model...
+<|im_start|>system
+
+Respond in the following format:
+<reasoning>
+...
+</reasoning>
+<answer>
+...
+</answer>
+<|im_end|>
+<|im_start|>user
+How many r's are in strawberry?<|im_end|>
+<|im_start|>assistant
+
+<|im_start|>system
+
+Respond in the following format:
+<reasoning>
+...
+</reasoning>
+<answer>
+...
+</answer>
+<|im_end|>
+<|im_start|>user
+How many r's are in strawberry?<|im_end|>
+<|im_start|>assistant
+<reasoning>
+To find out how many times the letter 'r' appears in the word "strawberry", we can simply go through the word and count each occurrence of 'r'.
+
+- The first 'r' is in the beginning of the word.
+- The second 'r' is in the middle of the word.
+- The third 'r' is in the middle of the word.
+- The fourth 'r' is at the end of the word.
+
+So, there are 4 occurrences of the letter 'r' in the word "strawberry".
+</reasoning>
+<answer>
+4
+</answer><|im_end|>

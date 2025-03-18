@@ -1,0 +1,60 @@
+USE_CUDAGRAPH: True
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+DEBUG::VLLLM VLLM_LOGGING_CONFIG_PATH None
+Namespace(merged_model='grpo_saved_merged_cudagraph=True_runid=20250317_1525', adapter_path=None, original_model='Qwen/Qwen2.5-3B-Instruct', use_vllm=True, temperature=0.0)
+Using merged model...
+INFO 03-18 05:21:25 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/platforms/__init__.py:207] Automatically detected platform cuda.
+==((====))==  Unsloth 2025.3.14: Fast Qwen2 patching. Transformers: 4.49.0. vLLM: 0.7.3.
+   \\   /|    NVIDIA H100 80GB HBM3. Num GPUs = 1. Max memory: 79.109 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.5.1+cu124. CUDA: 9.0. CUDA Toolkit: 12.4. Triton: 3.1.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.28.post3. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+Unsloth: vLLM loading grpo_saved_merged_cudagraph=True_runid=20250317_1525 with actual GPU utilization = 49.62%
+Unsloth: Your GPU has CUDA compute capability 9.0 with VRAM = 79.11 GB.
+Unsloth: Using conservativeness = 1.0. Chunked prefill tokens = 1024. Num Sequences = 320.
+Unsloth: vLLM's KV Cache can use up to 33.28 GB. Also swap space = 6 GB.
+INFO 03-18 05:21:32 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/config.py:549] This model supports multiple tasks: {'score', 'reward', 'embed', 'classify', 'generate'}. Defaulting to 'generate'.
+INFO 03-18 05:21:32 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/engine/llm_engine.py:234] Initializing a V0 LLM engine (v0.7.3) with config: model='grpo_saved_merged_cudagraph=True_runid=20250317_1525', speculative_config=None, tokenizer='grpo_saved_merged_cudagraph=True_runid=20250317_1525', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, override_neuron_config=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=1024, download_dir=None, load_format=LoadFormat.AUTO, tensor_parallel_size=1, pipeline_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=False, kv_cache_dtype=auto,  device_config=cuda:0, decoding_config=DecodingConfig(guided_decoding_backend='xgrammar'), observability_config=ObservabilityConfig(otlp_traces_endpoint=None, collect_model_forward_time=False, collect_model_execute_time=False), seed=0, served_model_name=grpo_saved_merged_cudagraph=True_runid=20250317_1525, num_scheduler_steps=1, multi_step_stream_outputs=True, enable_prefix_caching=True, chunked_prefill_enabled=False, use_async_output_proc=True, disable_mm_preprocessor_cache=False, mm_processor_kwargs=None, pooler_config=None, compilation_config={"level":0,"splitting_ops":[],"compile_sizes":[],"cudagraph_capture_sizes":[320,312,304,296,288,280,272,264,256,248,240,232,224,216,208,200,192,184,176,168,160,152,144,136,128,120,112,104,96,88,80,72,64,56,48,40,32,24,16,8,4,2,1],"max_capture_size":320}, use_cached_outputs=False, 
+INFO 03-18 05:21:32 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/platforms/cuda.py:229] Using Flash Attention backend.
+[W318 05:21:33.163866800 CUDAAllocatorConfig.h:28] Warning: expandable_segments not supported on this platform (function operator())
+INFO 03-18 05:21:33 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/model_runner.py:1110] Starting to load model grpo_saved_merged_cudagraph=True_runid=20250317_1525...
+Loading safetensors checkpoint shards:   0% Completed | 0/2 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards:  50% Completed | 1/2 [00:00<00:00,  5.32it/s]
+Loading safetensors checkpoint shards: 100% Completed | 2/2 [00:00<00:00,  1.84it/s]
+Loading safetensors checkpoint shards: 100% Completed | 2/2 [00:00<00:00,  2.04it/s]
+
+INFO 03-18 05:21:34 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/model_runner.py:1115] Loading model weights took 5.7701 GB
+INFO 03-18 05:21:34 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/lora/punica_wrapper/punica_selector.py:18] Using PunicaWrapperGPU.
+INFO 03-18 05:21:36 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/worker.py:267] Memory profiling takes 1.27 seconds
+INFO 03-18 05:21:36 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/worker.py:267] the current vLLM instance can use total_gpu_memory (79.11GiB) x gpu_memory_utilization (0.50) = 39.25GiB
+INFO 03-18 05:21:36 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/worker.py:267] model weights take 5.77GiB; non_torch_memory takes 0.15GiB; PyTorch activation peak memory takes 1.77GiB; the rest of the memory reserved for KV Cache is 31.56GiB.
+INFO 03-18 05:21:36 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/executor/executor_base.py:111] # cuda blocks: 57456, # CPU blocks: 10922
+INFO 03-18 05:21:36 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/executor/executor_base.py:116] Maximum concurrency for 1024 tokens per request: 897.75x
+INFO 03-18 05:21:39 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/model_runner.py:1434] Capturing cudagraphs for decoding. This may lead to unexpected consequences if the model is not static. To run the model in eager mode, set 'enforce_eager=True' or use '--enforce-eager' in the CLI. If out-of-memory error occurs during cudagraph capture, consider decreasing `gpu_memory_utilization` or switching to eager mode. You can also reduce the `max_num_seqs` as needed to decrease memory usage.
+Capturing CUDA graph shapes:   0%|          | 0/43 [00:00<?, ?it/s]Capturing CUDA graph shapes:   2%|▏         | 1/43 [00:00<00:21,  1.91it/s]Capturing CUDA graph shapes:   5%|▍         | 2/43 [00:00<00:19,  2.15it/s]Capturing CUDA graph shapes:   7%|▋         | 3/43 [00:01<00:18,  2.18it/s]Capturing CUDA graph shapes:   9%|▉         | 4/43 [00:01<00:17,  2.17it/s]Capturing CUDA graph shapes:  12%|█▏        | 5/43 [00:02<00:17,  2.13it/s]Capturing CUDA graph shapes:  14%|█▍        | 6/43 [00:02<00:17,  2.16it/s]Capturing CUDA graph shapes:  16%|█▋        | 7/43 [00:03<00:16,  2.20it/s]Capturing CUDA graph shapes:  19%|█▊        | 8/43 [00:04<00:22,  1.59it/s]Capturing CUDA graph shapes:  21%|██        | 9/43 [00:05<00:27,  1.23it/s]Capturing CUDA graph shapes:  23%|██▎       | 10/43 [00:06<00:30,  1.07it/s]Capturing CUDA graph shapes:  26%|██▌       | 11/43 [00:08<00:37,  1.18s/it]Capturing CUDA graph shapes:  28%|██▊       | 12/43 [00:11<00:51,  1.67s/it]Capturing CUDA graph shapes:  30%|███       | 13/43 [00:12<00:50,  1.69s/it]Capturing CUDA graph shapes:  33%|███▎      | 14/43 [00:16<01:05,  2.27s/it]Capturing CUDA graph shapes:  35%|███▍      | 15/43 [00:20<01:15,  2.69s/it]Capturing CUDA graph shapes:  37%|███▋      | 16/43 [00:23<01:20,  2.99s/it]Capturing CUDA graph shapes:  40%|███▉      | 17/43 [00:27<01:24,  3.24s/it]Capturing CUDA graph shapes:  42%|████▏     | 18/43 [00:29<01:07,  2.69s/it]Capturing CUDA graph shapes:  44%|████▍     | 19/43 [00:30<00:53,  2.24s/it]Capturing CUDA graph shapes:  47%|████▋     | 20/43 [00:31<00:44,  1.94s/it]Capturing CUDA graph shapes:  49%|████▉     | 21/43 [00:32<00:38,  1.74s/it]Capturing CUDA graph shapes:  51%|█████     | 22/43 [00:34<00:34,  1.65s/it]Capturing CUDA graph shapes:  53%|█████▎    | 23/43 [00:35<00:30,  1.55s/it]Capturing CUDA graph shapes:  56%|█████▌    | 24/43 [00:37<00:28,  1.51s/it]Capturing CUDA graph shapes:  58%|█████▊    | 25/43 [00:38<00:27,  1.50s/it]Capturing CUDA graph shapes:  60%|██████    | 26/43 [00:39<00:24,  1.41s/it]Capturing CUDA graph shapes:  63%|██████▎   | 27/43 [00:41<00:22,  1.43s/it]Capturing CUDA graph shapes:  65%|██████▌   | 28/43 [00:42<00:22,  1.47s/it]Capturing CUDA graph shapes:  67%|██████▋   | 29/43 [00:44<00:20,  1.46s/it]Capturing CUDA graph shapes:  70%|██████▉   | 30/43 [00:45<00:19,  1.47s/it]Capturing CUDA graph shapes:  72%|███████▏  | 31/43 [00:46<00:16,  1.39s/it]Capturing CUDA graph shapes:  74%|███████▍  | 32/43 [00:48<00:15,  1.42s/it]Capturing CUDA graph shapes:  77%|███████▋  | 33/43 [00:49<00:14,  1.42s/it]Capturing CUDA graph shapes:  79%|███████▉  | 34/43 [00:51<00:12,  1.41s/it]Capturing CUDA graph shapes:  81%|████████▏ | 35/43 [00:52<00:11,  1.41s/it]Capturing CUDA graph shapes:  84%|████████▎ | 36/43 [00:54<00:09,  1.42s/it]Capturing CUDA graph shapes:  86%|████████▌ | 37/43 [00:55<00:07,  1.31s/it]Capturing CUDA graph shapes:  88%|████████▊ | 38/43 [00:56<00:06,  1.30s/it]Capturing CUDA graph shapes:  91%|█████████ | 39/43 [00:57<00:05,  1.30s/it]Capturing CUDA graph shapes:  93%|█████████▎| 40/43 [00:59<00:04,  1.33s/it]Capturing CUDA graph shapes:  95%|█████████▌| 41/43 [01:00<00:02,  1.35s/it]Capturing CUDA graph shapes:  98%|█████████▊| 42/43 [01:02<00:01,  1.49s/it]Capturing CUDA graph shapes: 100%|██████████| 43/43 [01:05<00:00,  1.90s/it]Capturing CUDA graph shapes: 100%|██████████| 43/43 [01:05<00:00,  1.51s/it]
+INFO 03-18 05:22:44 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/model_runner.py:1562] Graph capturing finished in 65 secs, took 3.01 GiB
+INFO 03-18 05:22:44 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/engine/llm_engine.py:436] init engine (profile, create kv cache, warmup model) took 69.70 seconds
+Using merged model...
+Processed prompts:   0%|          | 0/1 [00:00<?, ?it/s, est. speed input: 0.00 toks/s, output: 0.00 toks/s]Processed prompts: 100%|██████████| 1/1 [00:01<00:00,  1.55s/it, est. speed input: 27.68 toks/s, output: 144.86 toks/s]Processed prompts: 100%|██████████| 1/1 [00:01<00:00,  1.55s/it, est. speed input: 27.68 toks/s, output: 144.86 toks/s]
+Merged model: <reasoning>
+To determine how many times the letter 'r' appears in the word "strawberry," we can go through the word character by character and count each occurrence of 'r'.
+
+1. The first character is 's', not 'r'.
+2. The second character is 't', not 'r'.
+3. The third character is 'r', this is the first occurrence of 'r'.
+4. The fourth character is 'w', not 'r'.
+5. The fifth character is 'a', not 'r'.
+6. The sixth character is 'r', this is the second occurrence of 'r'.
+7. The seventh character is 'r', this is the third occurrence of 'r'.
+8. The eighth character is 'b', not 'r'.
+9. The ninth character is 'b', not 'r'.
+10. The tenth character is 'e', not 'r'.
+
+After examining all the characters in the word "strawberry," we find that the letter 'r' appears 3 times.
+</reasoning>
+<answer>
+3
+</answer>
+[rank0]:[W318 05:23:05.854253521 ProcessGroupNCCL.cpp:1250] Warning: WARNING: process group has NOT been destroyed before we destruct ProcessGroupNCCL. On normal program exit, the application should call destroy_process_group to ensure that any pending NCCL operations have finished in this process. In rare cases this process can exit before this point and block the progress of another member of the process group. This constraint has always been present,  but this warning has only been added since PyTorch 2.4 (function operator())

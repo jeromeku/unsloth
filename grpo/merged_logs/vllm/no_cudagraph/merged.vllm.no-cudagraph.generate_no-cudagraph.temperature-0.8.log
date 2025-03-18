@@ -1,0 +1,45 @@
+USE_CUDAGRAPH: False
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+DEBUG::VLLLM VLLM_LOGGING_CONFIG_PATH None
+Namespace(merged_model='grpo_saved_merged_cudagraph=False_runid=20250317_1632', adapter_path=None, original_model='Qwen/Qwen2.5-3B-Instruct', use_vllm=True, temperature=0.8)
+Using merged model...
+INFO 03-18 05:19:50 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/platforms/__init__.py:207] Automatically detected platform cuda.
+==((====))==  Unsloth 2025.3.14: Fast Qwen2 patching. Transformers: 4.49.0. vLLM: 0.7.3.
+   \\   /|    NVIDIA H100 80GB HBM3. Num GPUs = 1. Max memory: 79.109 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.5.1+cu124. CUDA: 9.0. CUDA Toolkit: 12.4. Triton: 3.1.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.28.post3. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+Unsloth: vLLM loading grpo_saved_merged_cudagraph=False_runid=20250317_1632 with actual GPU utilization = 49.62%
+Unsloth: Your GPU has CUDA compute capability 9.0 with VRAM = 79.11 GB.
+Unsloth: Using conservativeness = 1.0. Chunked prefill tokens = 1024. Num Sequences = 320.
+Unsloth: vLLM's KV Cache can use up to 33.28 GB. Also swap space = 6 GB.
+INFO 03-18 05:19:56 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/config.py:549] This model supports multiple tasks: {'embed', 'reward', 'classify', 'score', 'generate'}. Defaulting to 'generate'.
+WARNING 03-18 05:19:56 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/platforms/cuda.py:95] To see benefits of async output processing, enable CUDA graph. Since, enforce-eager is enabled, async output processor cannot be used
+INFO 03-18 05:19:56 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/engine/llm_engine.py:234] Initializing a V0 LLM engine (v0.7.3) with config: model='grpo_saved_merged_cudagraph=False_runid=20250317_1632', speculative_config=None, tokenizer='grpo_saved_merged_cudagraph=False_runid=20250317_1632', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, override_neuron_config=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=1024, download_dir=None, load_format=LoadFormat.AUTO, tensor_parallel_size=1, pipeline_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=True, kv_cache_dtype=auto,  device_config=cuda:0, decoding_config=DecodingConfig(guided_decoding_backend='xgrammar'), observability_config=ObservabilityConfig(otlp_traces_endpoint=None, collect_model_forward_time=False, collect_model_execute_time=False), seed=0, served_model_name=grpo_saved_merged_cudagraph=False_runid=20250317_1632, num_scheduler_steps=1, multi_step_stream_outputs=True, enable_prefix_caching=True, chunked_prefill_enabled=False, use_async_output_proc=False, disable_mm_preprocessor_cache=False, mm_processor_kwargs=None, pooler_config=None, compilation_config={"level":0,"splitting_ops":[],"compile_sizes":[],"cudagraph_capture_sizes":[],"max_capture_size":0}, use_cached_outputs=False, 
+INFO 03-18 05:19:57 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/platforms/cuda.py:229] Using Flash Attention backend.
+[W318 05:19:57.343872797 CUDAAllocatorConfig.h:28] Warning: expandable_segments not supported on this platform (function operator())
+INFO 03-18 05:19:57 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/model_runner.py:1110] Starting to load model grpo_saved_merged_cudagraph=False_runid=20250317_1632...
+Loading safetensors checkpoint shards:   0% Completed | 0/2 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards:  50% Completed | 1/2 [00:00<00:00,  5.33it/s]
+Loading safetensors checkpoint shards: 100% Completed | 2/2 [00:01<00:00,  1.78it/s]
+Loading safetensors checkpoint shards: 100% Completed | 2/2 [00:01<00:00,  1.97it/s]
+
+INFO 03-18 05:19:59 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/model_runner.py:1115] Loading model weights took 5.7701 GB
+INFO 03-18 05:19:59 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/lora/punica_wrapper/punica_selector.py:18] Using PunicaWrapperGPU.
+INFO 03-18 05:20:00 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/worker.py:267] Memory profiling takes 1.57 seconds
+INFO 03-18 05:20:00 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/worker.py:267] the current vLLM instance can use total_gpu_memory (79.11GiB) x gpu_memory_utilization (0.50) = 39.25GiB
+INFO 03-18 05:20:00 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/worker/worker.py:267] model weights take 5.77GiB; non_torch_memory takes 0.15GiB; PyTorch activation peak memory takes 1.77GiB; the rest of the memory reserved for KV Cache is 31.56GiB.
+INFO 03-18 05:20:00 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/executor/executor_base.py:111] # cuda blocks: 57456, # CPU blocks: 10922
+INFO 03-18 05:20:00 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/executor/executor_base.py:116] Maximum concurrency for 1024 tokens per request: 897.75x
+INFO 03-18 05:20:03 /home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/vllm/engine/llm_engine.py:436] init engine (profile, create kv cache, warmup model) took 4.84 seconds
+Using merged model...
+Processed prompts:   0%|          | 0/1 [00:00<?, ?it/s, est. speed input: 0.00 toks/s, output: 0.00 toks/s]Processed prompts: 100%|██████████| 1/1 [00:04<00:00,  4.27s/it, est. speed input: 10.07 toks/s, output: 26.23 toks/s]Processed prompts: 100%|██████████| 1/1 [00:04<00:00,  4.27s/it, est. speed input: 10.07 toks/s, output: 26.23 toks/s]
+Merged model: <reasoning>
+To determine the number of 'r's in the word "strawberry," we need to examine each letter in the word. The word "strawberry" consists of 10 letters: S, T, R, A, W, B, R, R, B, Y. Counting the 'r's, we find two instances of the letter 'r.' Thus, the number of 'r's in "strawberry" is 2.
+</reasoning>
+<answer>
+2
+</answer>
+[rank0]:[W318 05:20:13.638323997 ProcessGroupNCCL.cpp:1250] Warning: WARNING: process group has NOT been destroyed before we destruct ProcessGroupNCCL. On normal program exit, the application should call destroy_process_group to ensure that any pending NCCL operations have finished in this process. In rare cases this process can exit before this point and block the progress of another member of the process group. This constraint has always been present,  but this warning has only been added since PyTorch 2.4 (function operator())

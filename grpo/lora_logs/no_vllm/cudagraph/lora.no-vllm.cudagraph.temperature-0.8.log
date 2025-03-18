@@ -1,0 +1,52 @@
+USE_CUDAGRAPH: False
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+DEBUG::VLLLM VLLM_LOGGING_CONFIG_PATH None
+Unsloth 2025.3.14 patched 36 layers with 36 QKV layers, 36 O layers and 36 MLP layers.
+Namespace(merged_model=None, adapter_path='grpo_saved_lora_cudagraph=True_runid=20250317_1525', original_model='Qwen/Qwen2.5-3B-Instruct', use_vllm=False, temperature=0.8)
+Using LoRA model...
+==((====))==  Unsloth 2025.3.14: Fast Qwen2 patching. Transformers: 4.49.0. vLLM: 0.7.3.
+   \\   /|    NVIDIA H100 80GB HBM3. Num GPUs = 1. Max memory: 79.109 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.5.1+cu124. CUDA: 9.0. CUDA Toolkit: 12.4. Triton: 3.1.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.28.post3. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+Loading saved adapter weights...
+Active adapters  ['default']
+<|im_start|>system
+
+Respond in the following format:
+<reasoning>
+...
+</reasoning>
+<answer>
+...
+</answer>
+<|im_end|>
+<|im_start|>user
+How many r's are in strawberry?<|im_end|>
+<|im_start|>assistant
+
+<|im_start|>system
+
+Respond in the following format:
+<reasoning>
+...
+</reasoning>
+<answer>
+...
+</answer>
+<|im_end|>
+<|im_start|>user
+How many r's are in strawberry?<|im_end|>
+<|im_start|>assistant
+<reasoning>
+To determine how many r's are in the word "strawberry," I need to count each occurrence of the letter 'r' within the word.
+Let's go through the word:
+s-t-r-a-w-b-e-r-r-y
+The letter 'r' appears in the following positions: 3, 5, and 8.
+Thus, there are 3 occurrences of the letter 'r' in the word "strawberry."
+</reasoning>
+<answer>
+3
+</answer><|im_end|>

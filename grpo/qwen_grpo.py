@@ -246,7 +246,6 @@ def generate_text(
     top_p=SAMPLING_PARAMS["top_p"],
     max_tokens=SAMPLING_PARAMS["max_tokens"],
     save_path=None,
-    do_sample=True,
 ):
     if add_system_prompt:
         messages = [SYSTEM_MESSAGE] + messages
