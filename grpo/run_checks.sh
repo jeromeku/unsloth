@@ -33,7 +33,6 @@ for temperature in 0.0 0.8; do
     USE_CUDAGRAPH=1 python lora-check.py --adapter-path $ADAPTER_PATH_NO_CUDAGRAPH --use-vllm --temperature $TEMPERATURE 2>&1 | tee $LORA_DIR/lora.vllm.no-cudagraph.generate_cudagraph.temperature-$TEMPERATURE.log
 done
 
-
 # Merged adapters with native hf generation
 for temperature in 0.0 0.8; do
     echo "Running merged models with no vllm generation with temperature $temperature"
