@@ -190,7 +190,8 @@ def get_peft_weights(model):
     return {name: param for name, param in model.named_parameters() if is_lora_weight(name)}
 
 def describe_peft_weights(model):
-    return {name: describe_param(param) for name, param in get_peft_weights(model).items()}
+    for name, param in get_peft_weights(model).items():
+        yield name, describe_param(param, as_str=True)
 
 if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -222,8 +223,8 @@ if __name__ == "__main__":
     batch = next(iter(data_loader))
     input_ids = batch["input_ids"]
     print(tokenizer.decode(input_ids[0], skip_special_tokens=False))
-    for name, param in itertools.islice(get_peft_weights(model).items(), 2):
-        print(f"{name}: {describe_param(param)}")
+    for name, stats in itertools.islice(describe_peft_weights(model), 2):
+        print(f"{name}:\n{stats}")
     # breakpoint()
     # output = trainer.train()
     # print(output)
