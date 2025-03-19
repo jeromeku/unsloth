@@ -112,15 +112,16 @@ def convert_weights_back_to_dtype(model, dtype):
         if any(s in name for s in ["norm", "embed"]):
             param.data = param.data.to(dtype)
 
-def describe_param(param: torch.Tensor, include_l1: bool = False, include_l2: bool = False, include_infinity: bool = False) -> dict:
+def describe_param(param: torch.Tensor, include_l1: bool = False, include_l2: bool = False, include_infinity: bool = False, as_str: bool = True) -> dict:
     """
     Provide a statistical summary of a 2D weight matrix or tensor.
-    
+    If as_str is True, the summary is returned as a formatted string.
     Parameters:
         param: torch.Tensor
         include_l1 (bool): Whether to include the L1 norm (sum of absolute values).
         include_l2 (bool): Whether to include the L2 norm (Frobenius norm).
         include_infinity (bool): Whether to include the infinity norm (max absolute value).
+        as_str (bool): Whether to return the summary as a formatted string.
     
     Returns:
         dict: A dictionary with the following statistics:
@@ -137,33 +138,34 @@ def describe_param(param: torch.Tensor, include_l1: bool = False, include_l2: bo
               - L2_norm: Euclidean (Frobenius) norm.
               - infinity_norm: Maximum absolute value.
     """
-    param = param.detach().cpu().numpy()
+
+    param = param.float()
     summary = {
         "shape": param.shape,
-        "mean": float(np.mean(param)),
-        "median": float(np.median(param)),
-        "std": float(np.std(param)),
-        "min": float(np.min(param)),
-        "max": float(np.max(param)),
-        "percentile_25": float(np.percentile(param, 25)),
-        "percentile_75": float(np.percentile(param, 75))
+        "mean": param.mean().cpu().item(),
+        "std": param.std().cpu().item(),
+        "min": param.min().cpu().item(),
+        "max": param.max().cpu().item(),
+        "percentile_25": param.quantile(0.25).cpu().item(),
+        "percentile_50": param.quantile(0.5).cpu().item(),
+        "percentile_75": param.quantile(0.75).cpu().item()
     }
     
     if include_l1:
-        summary["L1_norm"] = float(np.sum(np.abs(param)))
+        summary["L1_norm"] = param.abs().sum().cpu().item()
     if include_l2:
-        summary["L2_norm"] = float(np.linalg.norm(param))
+        summary["L2_norm"] = param.norm().cpu().item()
     if include_infinity:
-        summary["infinity_norm"] = float(np.max(np.abs(param)))
+        summary["infinity_norm"] = param.abs().max().cpu().item()
     
-    return summary
+    return format_summary(summary) if as_str else summary
 
 def format_summary(stats: dict, precision: int = 6) -> str:
     """
     Format the statistical summary dictionary for printing.
     
     Parameters:
-        stats (dict): The dictionary returned by summarize_weights.
+        stats (dict): The dictionary returned by describe_param.
         precision (int): Number of decimal places for floating point numbers.
     
     Returns:
@@ -184,7 +186,7 @@ def format_summary(stats: dict, precision: int = 6) -> str:
 
 def get_peft_weights(model):
     # ruff: noqa
-    is_lora_weight = lambda name: "lora_A" in name or "lora_B" 
+    is_lora_weight = lambda name: any(s in name for s in ["lora_A", "lora_B"])
     return {name: param for name, param in model.named_parameters() if is_lora_weight(name)}
 
 def describe_peft_weights(model):
@@ -220,6 +222,8 @@ if __name__ == "__main__":
     batch = next(iter(data_loader))
     input_ids = batch["input_ids"]
     print(tokenizer.decode(input_ids[0], skip_special_tokens=False))
+    for name, param in itertools.islice(get_peft_weights(model).items(), 2):
+        print(f"{name}: {describe_param(param)}")
     # breakpoint()
     # output = trainer.train()
     # print(output)
