@@ -4,6 +4,7 @@ import torch
 from datasets import Dataset
 from transformers import AutoTokenizer
 from trl import SFTConfig
+from utils import header_footer_context, timer
 from utils.data_utils import (
     DEFAULT_MESSAGES,
     USER_MESSAGE,
@@ -12,7 +13,6 @@ from utils.data_utils import (
 )
 from utils.hf_utils import (
     fix_llama3_tokenizer,
-    generate_text,
     sample_responses,
     setup_model,
     setup_peft,
@@ -21,25 +21,38 @@ from utils.hf_utils import (
 )
 
 if __name__ == "__main__":
-
     model_name = "meta-llama/Llama-3.2-1B-Instruct"
     dtype = torch.bfloat16
     max_steps = 10
     output_dir = "sft_test"
     seed = 42
     batch_size = 5
-    num_generations = 10
+    num_generations = 5
     tokenizer = setup_tokenizer(model_name, fixup_funcs=[fix_llama3_tokenizer])
     temperature = 0.8
+    max_new_tokens = 20
 
-    dataset: Dataset = create_dataset(tokenizer, num_examples=1000, messages=DEFAULT_MESSAGES)
-    prompt = tokenizer.apply_chat_template([USER_MESSAGE], tokenize=False, add_generation_prompt=True)
+    dataset: Dataset = create_dataset(
+        tokenizer, num_examples=1000, messages=DEFAULT_MESSAGES
+    )
+    prompt = tokenizer.apply_chat_template(
+        [USER_MESSAGE], tokenize=False, add_generation_prompt=True
+    )
     print(prompt)
 
     model = setup_model(model_name, quantize=True, dtype=dtype)
-    responses = sample_responses(model, tokenizer, prompt=prompt, num_generations=num_generations)
-    print(responses)
-
+    responses = sample_responses(
+        model,
+        tokenizer,
+        prompt=prompt,
+        num_generations=num_generations,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        skip_special_tokens=False,
+    )
+    with header_footer_context("Responses before training"):
+        for i, response in enumerate(responses, start=1):
+            print(f"Response {i}:\n{response}")
     # training_args = SFTConfig(
     #         output_dir=output_dir,
     #         max_steps=max_steps,
@@ -55,7 +68,7 @@ if __name__ == "__main__":
     #     )
     # peft_config = setup_peft(lora_rank=64)
     # trainer = setup_trainer(model, tokenizer, dataset, peft_config, training_args)
-   
+
     # data_loader = trainer.get_train_dataloader()
     # batch = next(iter(data_loader))
     # input_ids = batch["input_ids"]
