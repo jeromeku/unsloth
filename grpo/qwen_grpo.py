@@ -1,7 +1,8 @@
 # ruff: noqa
-#export LD_LIBRARY_PATH=/home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/nvidia/nvjitlink/lib:$LD_LIBRARY_PATH
+# export LD_LIBRARY_PATH=/home/jeromeku/dev/third_party/unsloth/.unsloth.env/lib/python3.11/site-packages/nvidia/nvjitlink/lib:$LD_LIBRARY_PATH
 import os
 from pathlib import Path
+import numpy as np
 
 ROOT_DIR = Path(".").absolute()
 os.environ["HF_HOME"] = str(ROOT_DIR / "hf_home")
@@ -15,7 +16,12 @@ from trl import GRPOConfig, GRPOTrainer
 from vllm import SamplingParams
 import torch
 import datetime
+
 # Load and prep dataset
+from transformers.trainer_callback import TrainerCallback
+from transformers.trainer import TrainerState, TrainerControl
+from transformers.training_args import TrainingArguments
+from peft import PeftModel
 
 XML_COT_FORMAT = """\
 <reasoning>
@@ -66,6 +72,97 @@ INTERMEDIATE_CHECKPOINT_PATH = f"checkpoints_cudagraph={USE_CUDAGRAPH}_runid={RU
 LORA_SAVE_PATH = f"grpo_saved_lora_cudagraph={USE_CUDAGRAPH}_runid={RUN_ID}"
 MERGED_SAVE_PATH = f"grpo_saved_merged_cudagraph={USE_CUDAGRAPH}_runid={RUN_ID}"
 
+
+def summarize_weights(
+    weight: torch.Tensor, include_l1=False, include_l2=False, include_infinity=False
+) -> dict:
+    """
+    Provide a statistical summary of a 2D weight matrix or tensor.
+
+    Parameters:
+        weight (torch.Tensor)
+        include_l1 (bool): Whether to include the L1 norm (sum of absolute values).
+        include_l2 (bool): Whether to include the L2 norm (Frobenius norm).
+        include_infinity (bool): Whether to include the infinity norm (max absolute value).
+
+    Returns:
+        dict: A dictionary with the following statistics:
+              - shape: Dimensions of the matrix.
+              - mean: Average value.
+              - median: Median value.
+              - std: Standard deviation.
+              - min: Minimum value.
+              - max: Maximum value.
+              - percentile_25: 25th percentile.
+              - percentile_75: 75th percentile.
+              Additionally, if enabled:
+              - L1_norm: Sum of absolute values.
+              - L2_norm: Euclidean (Frobenius) norm.
+              - infinity_norm: Maximum absolute value.
+    """
+
+    weight = weight.cpu().numpy()
+
+    summary = { 
+        "shape": weight.shape,
+        "mean": float(np.mean(weight)),
+        "median": float(np.median(weight)),
+        "std": float(np.std(weight)),
+        "min": float(np.min(weight)),
+        "max": float(np.max(weight)),
+        "percentile_25": float(np.percentile(weight, 25)),
+        "percentile_75": float(np.percentile(weight, 75)),
+    }
+
+    if include_l1:
+        summary["L1_norm"] = float(np.sum(np.abs(weight)))
+    if include_l2:
+        summary["L2_norm"] = float(np.linalg.norm(weight))
+    if include_infinity:
+        summary["infinity_norm"] = float(np.max(np.abs(weight)))
+
+    return summary
+
+
+def get_lora_weights(model: PeftModel) -> torch.Tensor:
+    is_lora_weight = lambda n: "lora_A" in n or "lora_B" in n
+    return {n: w for n, w in model.named_parameters() if is_lora_weight(n)}
+
+def summarize_lora_weights(model: PeftModel) -> dict:
+    return {n: summarize_weights(w) for n, w in get_lora_weights(model).items()}
+
+def format_summary(stats: dict, precision: int = 3) -> str:
+    """
+    Format the statistical summary dictionary for printing.
+
+    Parameters:
+        stats (dict): The dictionary returned by summarize_weights.
+        precision (int): Number of decimal places for floating point numbers.
+
+    Returns:
+        str: A formatted string representing the summary.
+    """
+    lines = []
+    for key, value in stats.items():
+        if isinstance(value, float):
+            formatted_value = f"{value:.{precision}f}"
+        elif isinstance(value, (tuple, list)):
+            # Format each element in tuples or lists (e.g., the shape)
+            formatted_value = ", ".join(str(v) for v in value)
+            formatted_value = (
+                f"({formatted_value})"
+                if isinstance(value, tuple)
+                else f"[{formatted_value}]"
+            )
+        else:
+            formatted_value = str(value)
+        lines.append(f"{key}: {formatted_value}")
+    return "\n".join(lines)
+
+class LoraWeightCallback(TrainerCallback):
+    def on_log(self,  args: TrainingArguments, state: TrainerState, control: TrainerControl,  **kwargs):
+        print(format_summary(summarize_weights(state.model.get_lora_weights())))
+
 def get_base_model_and_tokenizer(
     model_name: str,
     max_seq_length: int,
@@ -91,7 +188,7 @@ def get_peft_model(
     lora_rank: int,
     target_modules: list[str] = TARGET_MODULES,
     use_gradient_checkpointing: str = USE_GRADIENT_CHECKPOINTING,
-    random_state: int = RANDOM_STATE
+    random_state: int = RANDOM_STATE,
 ):
     return FastLanguageModel.get_peft_model(
         model,
@@ -281,8 +378,8 @@ def generate_text(
             f.write(output)
     return output
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     dataset = get_gsm8k_questions()
 
     model, tokenizer = get_base_model_and_tokenizer(
@@ -343,14 +440,17 @@ if __name__ == "__main__":
     print("\n ---- Saving LoRA ---- \n")
     model.save_lora(LORA_SAVE_PATH)
 
-
     # # %%
 
     print("\n ---- Done training ---- \n")
 
     print("\n ---- Generating text without LoRA ---- \n")
     without_lora = generate_text(
-        model, tokenizer, messages=DEFAULT_MESSAGE, add_system_prompt=True, lora_path=None
+        model,
+        tokenizer,
+        messages=DEFAULT_MESSAGE,
+        add_system_prompt=True,
+        lora_path=None,
     )
 
     print("\n ---- Generating text with LoRA ---- \n")
