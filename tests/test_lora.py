@@ -12,8 +12,11 @@ from utils.data_utils import (
 )
 from utils.hf_utils import (
     fix_llama3_tokenizer,
+    generate_text,
+    sample_responses,
     setup_model,
     setup_peft,
+    setup_tokenizer,
     setup_trainer,
 )
 
@@ -21,27 +24,31 @@ if __name__ == "__main__":
 
     model_name = "meta-llama/Llama-3.2-1B-Instruct"
     dtype = torch.bfloat16
-    max_steps = 100
+    max_steps = 10
     output_dir = "sft_test"
+    seed = 42
+    batch_size = 5
+    num_generations = 10
+    tokenizer = setup_tokenizer(model_name, fixup_funcs=[fix_llama3_tokenizer])
+    temperature = 0.8
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer = fix_llama3_tokenizer(tokenizer)
     dataset: Dataset = create_dataset(tokenizer, num_examples=1000, messages=DEFAULT_MESSAGES)
-    print(len(dataset))   
     prompt = tokenizer.apply_chat_template([USER_MESSAGE], tokenize=False, add_generation_prompt=True)
     print(prompt)
 
-    # model = setup_model(MODEL_NAME, quantize=True, dtype=dtype)
-    
+    model = setup_model(model_name, quantize=True, dtype=dtype)
+    responses = sample_responses(model, tokenizer, prompt=prompt, num_generations=num_generations)
+    print(responses)
+
     # training_args = SFTConfig(
-    #         output_dir=OUTPUT_DIR,
-    #         max_steps=MAX_STEPS,
-    #         per_device_train_batch_size=5,
+    #         output_dir=output_dir,
+    #         max_steps=max_steps,
+    #         per_device_train_batch_size=batch_size,
     #         log_level="info",
     #         report_to="none",
     #         num_train_epochs=1,
     #         logging_steps=1,
-    #         seed=42,
+    #         seed=seed,
     #         bf16=dtype == torch.bfloat16,
     #         fp16=dtype == torch.float16,
     #         save_strategy="no",
@@ -59,4 +66,3 @@ if __name__ == "__main__":
     # output = trainer.train()
     # print(output)
     # print(prompt)
-    # print(generate_text(model, tokenizer, prompt=prompt))

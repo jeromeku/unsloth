@@ -7,16 +7,38 @@ from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
 )
+from transformers.trainer_callback import (
+    TrainerCallback,
+    TrainerControl,
+    TrainerState,
+    TrainingArguments,
+)
 from trl import SFTTrainer
 
 
-def generate_text(model, tokenizer, prompt = None, inputs = None, temperature: float = 0.8, do_sample: bool = True):
-    assert prompt is not None or inputs is not None
-    if prompt is not None:
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    outputs = model.generate(**inputs, max_new_tokens=100, do_sample=do_sample, temperature=temperature)
-    response = tokenizer.decode(outputs[0], skip_special_tokens=False)
-    return response
+class PeftWeightCallback(TrainerCallback):
+    def on_log(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, logs, **kwargs):
+        print(f"DEBUG::CALLBACK::on_log::{state.log_history}")
+
+    def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        model = kwargs.get("model")
+        assert model is not None
+        print(f"DEBUG::CALLBACK::on_train_begin::{kwargs.keys()}")
+    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        print(f"DEBUG::CALLBACK::on_step_end::{state.global_step}")
+
+def generate_responses(model, tokenizer, prompt, max_new_tokens: int = 100, temperature: float = 0.8, do_sample: bool = True, num_generations: int = 1):
+    inputs = [tokenizer(prompt, return_tensors="pt") for _ in range(num_generations)]
+    breakpoint()
+    keys = inputs[0].keys()
+    batched_inputs = {key: torch.cat([input[key] for input in inputs], dim=0).to(model.device) for key in keys}
+    outputs = model.generate(**batched_inputs, max_new_tokens=max_new_tokens, do_sample=do_sample, temperature=temperature)
+    responses = tokenizer.batch_decode(outputs, skip_special_tokens=False)
+    return responses
+
+def sample_responses(model, tokenizer, prompt, temperature: float = 0.8, num_generations: int = 1):
+    responses = generate_responses(model, tokenizer, prompt, temperature=temperature, num_generations=num_generations)
+    return responses
 
 def setup_tokenizer(model_name, fixup_funcs: list[Callable] = []):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -74,7 +96,7 @@ def setup_trainer(model, tokenizer, dataset, peft_config, train_args, formatting
     )
 
 def setup_lora(model, tokenizer, dataset, peft_config, train_args, formatting_func=None, collator=None):
-    return LoRAConfig(
+    return LoraConfig(
         model=model,
         peft_config=peft_config,
         train_dataset=dataset,
