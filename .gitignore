@@ -1,0 +1,21 @@
+# Create gitignore for python project
+.DS_Store
+.env
+.venv
+.vscode
+.idea
+.pytest_cache
+*.pyc
+*.pyo
+*.pyd
+*.py
+*.pyw
+*.pyz
+*.py
+__pycache__
+*.ipynb_checkpoints
+*.pth
+*.bin
+*.safetensors
+*.pt
+*.pth
