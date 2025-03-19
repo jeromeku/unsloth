@@ -1,6 +1,7 @@
 import itertools
 from typing import Literal
 
+import numpy as np
 import torch
 import transformers
 from datasets import Dataset, IterableDataset, load_dataset
@@ -24,52 +25,6 @@ DTYPE = torch.bfloat16
 
 MAX_STEPS = 100
 OUTPUT_DIR = "sft_test"
-def formatting_prompts_func(example):
-    text = f"### {QUESTION_KEY}: {example['question']}\n ### {ANSWER_KEY}: {example['answer']}"
-    return text
-
-def data_generator():
-    while 1:
-        yield {"question": QUESTION, "answer": ANSWER}
-
-def test_dataset():
-    dataset = IterableDataset.from_generator(data_generator)
-
-    dataset = dataset.map(lambda example: {"text": formatting_prompts_func(example)})
-    formatted_data = next(iter(dataset))
-    assert formatted_data["text"] == f"### {QUESTION_KEY}: {QUESTION} ### {ANSWER_KEY}: {ANSWER}"
-
-def create_dummy_dataset(num_examples: int = 100, format_prompts: bool = False, dataset_type: Literal["prompt_completion", "instruct", "text"] = "prompt_completion"):
-    if dataset_type == "instruct":
-        dataset = Dataset.from_dict({"messages": [[USER_MESSAGE], [ASSISTANT_MESSAGE]] * num_examples})
-    elif dataset_type == "prompt_completion":
-        dataset = Dataset.from_dict({"prompt": [[USER_MESSAGE]] * num_examples, "completion": [[ASSISTANT_MESSAGE]] * num_examples})
-    else:
-        dataset = IterableDataset.from_generator(data_generator)
-        if format_prompts:
-            dataset = dataset.map(lambda example: {"text": formatting_prompts_func(example)})
-        dataset = itertools.islice(dataset, num_examples)
-    return dataset
-
-def get_test_dataset(dataset_type: Literal["prompt_completion", "instruct", "text"] = "prompt_completion", num_examples: int = 100, format_prompts: bool = False):
-    dataset = create_dummy_dataset(num_examples=num_examples, dataset_type=dataset_type, format_prompts=format_prompts)
-    return dataset
-
-def test_model(num_repeats: int = 10, do_sample: bool = False, temperature: float = 0.8, dataset_type: Literal["prompt_completion", "instruct", "text"] = "prompt_completion"):
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=DTYPE, device_map="cuda")
-    if dataset_type == "instruct" or dataset_type == "prompt_completion":
-        prompt = [{"role": "user", "content": QUESTION}]
-        inputs = tokenizer.apply_chat_template(prompt, return_dict=True, tokenize=True, add_generation_prompt=True, return_tensors="pt").to(model.device)
-    else:
-        prompt = QUESTION
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    
-    for i in range(num_repeats):
-        outputs = model.generate(**inputs, max_new_tokens=100, do_sample=do_sample, temperature=temperature)
-        response = tokenizer.decode(outputs[0], skip_special_tokens=False)
-        print(f"Response {i}:\n{response}")
-        print("-"*100)
 
 def fix_tokenizer(tokenizer):
     tokenizer.padding_side = "right"
@@ -79,42 +34,9 @@ def fix_tokenizer(tokenizer):
     tokenizer.pad_token = pad_token[0]  # Load dataset from the hub
     return tokenizer
 
-def train_model():
-    dataset = create_dummy_dataset(num_examples=100, format_prompts=True, use_instruct=USE_INSTRUCT)
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    tokenizer = fix_tokenizer(tokenizer)
-    print(tokenizer.get_chat_template())
-
-    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=DTYPE, device_map="cuda")
-    training_args = SFTConfig(
-            output_dir=OUTPUT_DIR,
-            max_steps=MAX_STEPS,
-            per_device_train_batch_size=5,
-            log_level="info",
-            report_to="none",
-            num_train_epochs=1,
-            logging_steps=1,
-            seed=42,
-            bf16=DTYPE == torch.bfloat16,
-            fp16=DTYPE == torch.float16,
-            #save_steps=50,
-        )
-    trainer = SFTTrainer(
-        model=model,
-        processing_class=tokenizer,
-        train_dataset=dataset,
-        args=training_args,
-        
-    )
-    # data_loader = trainer.get_train_dataloader()
-    # batch = next(iter(data_loader))
-    # input_ids = batch["input_ids"]
-
-    # print(tokenizer.decode(input_ids[0], skip_special_tokens=False))
 def create_instruction_dataset(num_examples: int = 10):
     dataset = Dataset.from_dict({"messages": [[USER_MESSAGE, ASSISTANT_MESSAGE]] * num_examples})
     return dataset
-
 
 def create_dataset(tokenizer, num_examples: int = 10):
     dataset = create_instruction_dataset(num_examples)
@@ -170,7 +92,7 @@ def setup_peft(
     )
     return peft_config
 
-def setup_trainer(model, tokenizer, dataset, formatting_func, peft_config, train_args, collator=None):
+def setup_trainer(model, tokenizer, dataset, peft_config, train_args, formatting_func=None, collator=None):
     return SFTTrainer(
         model=model,
         peft_config=peft_config,
@@ -190,6 +112,84 @@ def convert_weights_back_to_dtype(model, dtype):
         if any(s in name for s in ["norm", "embed"]):
             param.data = param.data.to(dtype)
 
+def describe_param(param: torch.Tensor, include_l1: bool = False, include_l2: bool = False, include_infinity: bool = False) -> dict:
+    """
+    Provide a statistical summary of a 2D weight matrix or tensor.
+    
+    Parameters:
+        param: torch.Tensor
+        include_l1 (bool): Whether to include the L1 norm (sum of absolute values).
+        include_l2 (bool): Whether to include the L2 norm (Frobenius norm).
+        include_infinity (bool): Whether to include the infinity norm (max absolute value).
+    
+    Returns:
+        dict: A dictionary with the following statistics:
+              - shape: Dimensions of the matrix.
+              - mean: Average value.
+              - median: Median value.
+              - std: Standard deviation.
+              - min: Minimum value.
+              - max: Maximum value.
+              - percentile_25: 25th percentile.
+              - percentile_75: 75th percentile.
+              Additionally, if enabled:
+              - L1_norm: Sum of absolute values.
+              - L2_norm: Euclidean (Frobenius) norm.
+              - infinity_norm: Maximum absolute value.
+    """
+    param = param.detach().cpu().numpy()
+    summary = {
+        "shape": param.shape,
+        "mean": float(np.mean(param)),
+        "median": float(np.median(param)),
+        "std": float(np.std(param)),
+        "min": float(np.min(param)),
+        "max": float(np.max(param)),
+        "percentile_25": float(np.percentile(param, 25)),
+        "percentile_75": float(np.percentile(param, 75))
+    }
+    
+    if include_l1:
+        summary["L1_norm"] = float(np.sum(np.abs(param)))
+    if include_l2:
+        summary["L2_norm"] = float(np.linalg.norm(param))
+    if include_infinity:
+        summary["infinity_norm"] = float(np.max(np.abs(param)))
+    
+    return summary
+
+def format_summary(stats: dict, precision: int = 6) -> str:
+    """
+    Format the statistical summary dictionary for printing.
+    
+    Parameters:
+        stats (dict): The dictionary returned by summarize_weights.
+        precision (int): Number of decimal places for floating point numbers.
+    
+    Returns:
+        str: A formatted string representing the summary.
+    """
+    lines = []
+    for key, value in stats.items():
+        if isinstance(value, float):
+            formatted_value = f"{value:.{precision}f}"
+        elif isinstance(value, (tuple, list)):
+            # Format each element in tuples or lists (e.g., the shape)
+            formatted_value = ", ".join(str(v) for v in value)
+            formatted_value = f"({formatted_value})" if isinstance(value, tuple) else f"[{formatted_value}]"
+        else:
+            formatted_value = str(value)
+        lines.append(f"{key}: {formatted_value}")
+    return "\n".join(lines)
+
+def get_peft_weights(model):
+    # ruff: noqa
+    is_lora_weight = lambda name: "lora_A" in name or "lora_B" 
+    return {name: param for name, param in model.named_parameters() if is_lora_weight(name)}
+
+def describe_peft_weights(model):
+    return {name: describe_param(param) for name, param in get_peft_weights(model).items()}
+
 if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     tokenizer = fix_tokenizer(tokenizer)
@@ -198,7 +198,7 @@ if __name__ == "__main__":
 
     dataset: Dataset = create_instruction_dataset(num_examples=1)
     dataset = dataset.repeat(1000)
-    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, torch_dtype=DTYPE, device_map="cuda:0")
+    model = setup_model(MODEL_NAME, quantize=True, dtype=DTYPE)
     
     training_args = SFTConfig(
             output_dir=OUTPUT_DIR,
@@ -211,20 +211,17 @@ if __name__ == "__main__":
             seed=42,
             bf16=DTYPE == torch.bfloat16,
             fp16=DTYPE == torch.float16,
-            #save_steps=50,
+            save_strategy="no",
         )
-    trainer = SFTTrainer(
-        model=model,
-        processing_class=tokenizer,
-        train_dataset=dataset,
-        args=training_args,
-    )
+    peft_config = setup_peft(lora_rank=64)
+    trainer = setup_trainer(model, tokenizer, dataset, peft_config, training_args)
+   
     data_loader = trainer.get_train_dataloader()
     batch = next(iter(data_loader))
     input_ids = batch["input_ids"]
     print(tokenizer.decode(input_ids[0], skip_special_tokens=False))
-    breakpoint()
-    output = trainer.train()
-    print(output)
-    print(prompt)
-    print(generate_text(model, tokenizer, prompt=prompt))
+    # breakpoint()
+    # output = trainer.train()
+    # print(output)
+    # print(prompt)
+    # print(generate_text(model, tokenizer, prompt=prompt))
