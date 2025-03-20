@@ -2,9 +2,11 @@ import os
 from contextlib import contextmanager, nullcontext
 from typing import Callable, Optional
 
+import bitsandbytes as bnb
 import torch
+from bitsandbytes.functional import dequantize_4bit
 from peft import get_peft_model, prepare_model_for_kbit_training
-from peft.tuners.lora import LoraConfig
+from peft.tuners.lora import LoraConfig, LoraLayer
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -215,3 +217,21 @@ def replace_module(module: torch.nn.Module, target_module_type: torch.nn.Module,
             setattr(module, child_name, new_module)
         else:
             replace_module(child_module, target_module_type, conversion_func)
+
+def _convert_lora_to_linear(module: LoraLayer):
+    base_layer = module.get_base_layer()
+    weight = base_layer.weight
+
+    assert isinstance(weight, bnb.nn.Params4bit)
+    quant_state = weight.quant_state
+    w_dq = dequantize_4bit(weight.data, quant_state)
+    new_module = torch.nn.Linear(w_dq.shape[1], w_dq.shape[0], bias=module.base_layer.bias is not None)
+    new_module.weight.data = torch.nn.Parameter(w_dq, requires_grad=False)
+    if module.base_layer.bias is not None:
+        new_module.bias.data = torch.nn.Parameter(module.base_layer.bias.data, requires_grad=False)
+    return new_module
+
+def convert_lora_to_linear(model: torch.nn.Module):
+    replace_module(model, LoraLayer, convert_lora_to_linear)
+    assert not any(isinstance(module, LoraLayer) for module in model.modules())
+    return model

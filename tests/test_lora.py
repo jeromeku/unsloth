@@ -14,6 +14,7 @@ from utils.data_utils import (
     describe_peft_weights,
 )
 from utils.hf_utils import (
+    convert_lora_to_linear,
     fix_llama3_tokenizer,
     get_peft_config,
     patch_bnb_merge,
@@ -27,6 +28,7 @@ if __name__ == "__main__":
     model_name = "meta-llama/Llama-3.2-1B-Instruct"
     dtype = torch.bfloat16
     max_steps = 100
+    num_examples = 1000
     lora_rank = 64
     output_dir = "sft_test"
     seed = 42
@@ -35,40 +37,31 @@ if __name__ == "__main__":
     tokenizer = setup_tokenizer(model_name, fixup_funcs=[fix_llama3_tokenizer])
     temperature = 0.8
     max_new_tokens = 20
+
     
     peft_config = get_peft_config(lora_rank=lora_rank, target_modules="all-linear")
     model = setup_model(model_name, quantize=True, dtype=dtype, peft_config=peft_config)
-
-    import bitsandbytes as bnb
-    from bitsandbytes.functional import dequantize_4bit
-    from peft.tuners.lora.bnb import Linear4bit, LoraLayer
-    from utils.hf_utils import replace_module
+        
+    model = convert_lora_to_linear(model)
+    print(model)
     
-    def convert_lora_to_linear(module: LoraLayer):
-        base_layer = module.get_base_layer()
-        breakpoint()
-        weight = base_layer.weight
+    inputs = tokenizer.apply_chat_template(
+        [USER_MESSAGE], tokenize=True, add_generation_prompt=True, return_dict=True, return_tensors="pt"
+    ).to(model.device)
 
-        assert isinstance(base_layer, bnb.nn.Params4bit)
-        quant_state = weight.quant_state
-        w_dq = dequantize_4bit(weight.data, quant_state)
-        new_module = torch.nn.Linear(w_dq.shape[1], w_dq.shape[0], bias=module.base_layer.bias is not None)
-        new_module.weight.data = w_dq
-        new_module.bias.data = module.base_layer.bias.data
-        return new_module
-    
-    replace_module(model, LoraLayer, convert_lora_to_linear)
-    for name, module in model.named_modules():
-        if isinstance(module, LoraLayer):
-            print(f"DEBUG::{name} is a LoraLayer")
+    with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=dtype):
+        outputs = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False, temperature=temperature)
+    print(tokenizer.decode(outputs[0], skip_special_tokens=True))
+
     import sys; sys.exit(0)
-    dataset: Dataset = create_dataset(
-        tokenizer, num_examples=1000, messages=DEFAULT_MESSAGES
-    )
     prompt = tokenizer.apply_chat_template(
         [USER_MESSAGE], tokenize=False, add_generation_prompt=True
     )
 
+    dataset: Dataset = create_dataset(
+        tokenizer, num_examples=num_examples, messages=DEFAULT_MESSAGES
+    )
+    
     training_args = SFTConfig(
             output_dir=output_dir,
             max_steps=max_steps,
