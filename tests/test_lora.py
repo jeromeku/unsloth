@@ -42,18 +42,6 @@ if __name__ == "__main__":
     peft_config = get_peft_config(lora_rank=lora_rank, target_modules="all-linear")
     model = setup_model(model_name, quantize=True, dtype=dtype, peft_config=peft_config)
         
-    model = convert_lora_to_linear(model)
-    print(model)
-    
-    inputs = tokenizer.apply_chat_template(
-        [USER_MESSAGE], tokenize=True, add_generation_prompt=True, return_dict=True, return_tensors="pt"
-    ).to(model.device)
-
-    with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=dtype):
-        outputs = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False, temperature=temperature)
-    print(tokenizer.decode(outputs[0], skip_special_tokens=True))
-
-    import sys; sys.exit(0)
     prompt = tokenizer.apply_chat_template(
         [USER_MESSAGE], tokenize=False, add_generation_prompt=True
     )
@@ -126,9 +114,8 @@ if __name__ == "__main__":
 
     model_copy = deepcopy(model)
     
-    with patch_bnb_merge():
-        merged_model = model.merge_and_unload(safe_merge=True, adapter_names=["default"])
-    
+    merged_model = convert_lora_to_linear(model)
+
     responses = sample_responses(
         merged_model,
         tokenizer,
@@ -139,7 +126,7 @@ if __name__ == "__main__":
         for i, response in enumerate(responses, start=1):
             print(f"Response {i}:\n{response}")
     
-    model_original_merge = model_copy.merge_and_unload(safe_merge=True, adapter_names=["default"])
+    model_original_merge = convert_lora_to_linear(model_copy)
     responses = sample_responses(
         model_original_merge,
         tokenizer,
