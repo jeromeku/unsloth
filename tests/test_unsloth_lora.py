@@ -1,0 +1,178 @@
+# ruff: noqa
+
+import itertools
+from copy import deepcopy
+from unsloth import FastLanguageModel
+
+import torch
+from datasets import Dataset
+from peft.tuners.lora.bnb import Linear4bit
+from transformers import AutoTokenizer
+from trl import SFTConfig
+from utils import header_footer_context, timer
+from utils.data_utils import (
+    DEFAULT_MESSAGES,
+    USER_MESSAGE,
+    create_dataset,
+    describe_peft_weights,
+)
+from utils.hf_utils import (
+    convert_lora_to_linear,
+    fix_llama3_tokenizer,
+    get_peft_config,
+    sample_responses,
+    setup_model,
+    setup_tokenizer,
+    setup_trainer,
+)
+
+
+def get_unsloth_model_and_tokenizer(
+    model_name: str,
+    max_seq_length: int,
+    load_in_4bit: bool,
+    fast_inference: bool,
+    max_lora_rank: int,
+    gpu_memory_utilization: float = 0.5,
+    dtype: torch.dtype = torch.bfloat16,
+):
+    return FastLanguageModel.from_pretrained(
+        model_name=model_name,
+        max_seq_length=max_seq_length,
+        load_in_4bit=load_in_4bit,
+        fast_inference=fast_inference,
+        max_lora_rank=max_lora_rank,
+        gpu_memory_utilization=gpu_memory_utilization,
+        dtype=dtype,
+    )
+
+
+def get_unsloth_peft_model(
+    model,
+    lora_rank: int,
+    target_modules: list[str] = "all-linear",
+    use_gradient_checkpointing: str = False,
+    random_state: int = 42,
+):
+    return FastLanguageModel.get_peft_model(
+        model,
+        r=lora_rank,  # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
+        target_modules=target_modules,
+        lora_alpha=lora_rank,
+        use_gradient_checkpointing=use_gradient_checkpointing,  # Enable long context finetuning
+        random_state=random_state,
+    )
+
+
+if __name__ == "__main__":
+    model_name = "meta-llama/Llama-3.2-1B-Instruct"
+    dtype = torch.bfloat16
+    max_steps = 100
+    num_examples = 1000
+    lora_rank = 64
+    output_dir = "sft_test"
+    seed = 42
+    batch_size = 5
+    num_generations = 5
+    target_modules = "all-linear"
+    gradient_checkpointing = False
+
+    model, tokenizer = get_unsloth_model_and_tokenizer(model_name, max_seq_length=512, load_in_4bit=True, fast_inference=False, max_lora_rank=lora_rank)
+    temperature = 0.8
+    max_new_tokens = 20
+
+    model = get_unsloth_peft_model(model, lora_rank=lora_rank, target_modules=target_modules, use_gradient_checkpointing=gradient_checkpointing, random_state=seed)
+        
+    prompt = tokenizer.apply_chat_template(
+        [USER_MESSAGE], tokenize=False, add_generation_prompt=True
+    )
+
+    dataset: Dataset = create_dataset(
+        tokenizer, num_examples=num_examples, messages=DEFAULT_MESSAGES
+    )
+    
+    training_args = SFTConfig(
+            output_dir=output_dir,
+            max_steps=max_steps,
+            per_device_train_batch_size=batch_size,
+            log_level="info",
+            report_to="none",
+            num_train_epochs=1,
+            logging_steps=1,
+            seed=seed,
+            bf16=dtype == torch.bfloat16,
+            fp16=dtype == torch.float16,
+            save_strategy="no",
+        )
+
+    with header_footer_context("Train Args"):
+        print(training_args)
+   
+    trainer = setup_trainer(model, tokenizer, dataset, training_args)
+
+    with header_footer_context("Model"):
+        print(type(model.model))
+
+    generation_args = {
+        "num_generations": num_generations,
+        "max_new_tokens": max_new_tokens,
+        "temperature": temperature,
+        "skip_special_tokens": False,
+        "dtype": dtype,
+    }
+    responses = sample_responses(
+        model,
+        tokenizer,
+        prompt=prompt,
+        **generation_args,
+    )
+    with header_footer_context("Responses before training"):
+        for i, response in enumerate(responses, start=1):
+            print(f"Response {i}:\n{response}")
+
+    with header_footer_context("Peft Weights before training"):
+        for name, stats in itertools.islice(describe_peft_weights(model), 2):
+            print(f"{name}:\n{stats}")
+
+    # output = trainer.train()
+    # with header_footer_context("Peft Weights after training"):
+    #     for name, stats in itertools.islice(describe_peft_weights(model), 2):
+    #         print(f"{name}:\n{stats}")
+
+    # with header_footer_context("Trainer Output"):
+    #     print(output)
+
+    # responses = sample_responses(
+    #     model,
+    #     tokenizer,
+    #     prompt=prompt,
+    #     **generation_args,
+    # )
+    # with header_footer_context("Responses after training"):
+    #     for i, response in enumerate(responses, start=1):
+    #         print(f"Response {i}:\n{response}")
+
+    # model_copy = deepcopy(model)
+    
+    # merged_model = convert_lora_to_linear(model)
+
+    # responses = sample_responses(
+    #     merged_model,
+    #     tokenizer,
+    #     prompt=prompt,
+    #     **generation_args,
+    # )
+    # with header_footer_context("Responses after custom merging to 16bit"):
+    #     for i, response in enumerate(responses, start=1):
+    #         print(f"Response {i}:\n{response}")
+    
+    # merged_model_peft = model_copy.merge_and_unload()
+    # responses = sample_responses(
+    #     merged_model_peft,
+    #     tokenizer,
+    #     prompt=prompt,
+    #     **generation_args,
+    # )
+    # with header_footer_context("Responses after peft merge_and_unload"):
+    #     for i, response in enumerate(responses, start=1):
+    #         print(f"Response {i}:\n{response}")
