@@ -32,7 +32,7 @@ def get_unsloth_model_and_tokenizer(
     max_seq_length: int,
     load_in_4bit: bool,
     fast_inference: bool,
-    max_lora_rank: int,
+    max_lora_rank: int = None,
     gpu_memory_utilization: float = 0.5,
     dtype: torch.dtype = torch.bfloat16,
 ):
@@ -74,15 +74,37 @@ if __name__ == "__main__":
     seed = 42
     batch_size = 5
     num_generations = 5
-    target_modules = "all-linear"
+    target_modules = [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+    ]
     gradient_checkpointing = False
+    unsloth_merged_path = "unsloth_merged_16bit"
 
-    model, tokenizer = get_unsloth_model_and_tokenizer(model_name, max_seq_length=512, load_in_4bit=True, fast_inference=False, max_lora_rank=lora_rank)
+    model, tokenizer = get_unsloth_model_and_tokenizer(
+        model_name,
+        max_seq_length=512,
+        load_in_4bit=True,
+        fast_inference=False,
+        max_lora_rank=lora_rank,
+        dtype=dtype
+    )
     temperature = 0.8
     max_new_tokens = 20
 
-    model = get_unsloth_peft_model(model, lora_rank=lora_rank, target_modules=target_modules, use_gradient_checkpointing=gradient_checkpointing, random_state=seed)
-        
+    model = get_unsloth_peft_model(
+        model,
+        lora_rank=lora_rank,
+        target_modules=target_modules,
+        use_gradient_checkpointing=gradient_checkpointing,
+        random_state=seed,
+    )
+
     prompt = tokenizer.apply_chat_template(
         [USER_MESSAGE], tokenize=False, add_generation_prompt=True
     )
@@ -90,24 +112,24 @@ if __name__ == "__main__":
     dataset: Dataset = create_dataset(
         tokenizer, num_examples=num_examples, messages=DEFAULT_MESSAGES
     )
-    
+
     training_args = SFTConfig(
-            output_dir=output_dir,
-            max_steps=max_steps,
-            per_device_train_batch_size=batch_size,
-            log_level="info",
-            report_to="none",
-            num_train_epochs=1,
-            logging_steps=1,
-            seed=seed,
-            bf16=dtype == torch.bfloat16,
-            fp16=dtype == torch.float16,
-            save_strategy="no",
-        )
+        output_dir=output_dir,
+        max_steps=max_steps,
+        per_device_train_batch_size=batch_size,
+        log_level="info",
+        report_to="none",
+        num_train_epochs=1,
+        logging_steps=1,
+        seed=seed,
+        bf16=dtype == torch.bfloat16,
+        fp16=dtype == torch.float16,
+        save_strategy="no",
+    )
 
     with header_footer_context("Train Args"):
         print(training_args)
-   
+
     trainer = setup_trainer(model, tokenizer, dataset, training_args)
 
     with header_footer_context("Model"):
@@ -134,26 +156,26 @@ if __name__ == "__main__":
         for name, stats in itertools.islice(describe_peft_weights(model), 2):
             print(f"{name}:\n{stats}")
 
-    # output = trainer.train()
-    # with header_footer_context("Peft Weights after training"):
-    #     for name, stats in itertools.islice(describe_peft_weights(model), 2):
-    #         print(f"{name}:\n{stats}")
+    output = trainer.train()
+    with header_footer_context("Peft Weights after training"):
+        for name, stats in itertools.islice(describe_peft_weights(model), 2):
+            print(f"{name}:\n{stats}")
 
-    # with header_footer_context("Trainer Output"):
-    #     print(output)
+    with header_footer_context("Trainer Output"):
+        print(output)
 
-    # responses = sample_responses(
-    #     model,
-    #     tokenizer,
-    #     prompt=prompt,
-    #     **generation_args,
-    # )
-    # with header_footer_context("Responses after training"):
-    #     for i, response in enumerate(responses, start=1):
-    #         print(f"Response {i}:\n{response}")
+    responses = sample_responses(
+        model,
+        tokenizer,
+        prompt=prompt,
+        **generation_args,
+    )
+    with header_footer_context("Responses after training"):
+        for i, response in enumerate(responses, start=1):
+            print(f"Response {i}:\n{response}")
 
-    # model_copy = deepcopy(model)
-    
+    #model_copy = deepcopy(model)
+
     # merged_model = convert_lora_to_linear(model)
 
     # responses = sample_responses(
@@ -165,14 +187,25 @@ if __name__ == "__main__":
     # with header_footer_context("Responses after custom merging to 16bit"):
     #     for i, response in enumerate(responses, start=1):
     #         print(f"Response {i}:\n{response}")
-    
-    # merged_model_peft = model_copy.merge_and_unload()
-    # responses = sample_responses(
-    #     merged_model_peft,
-    #     tokenizer,
-    #     prompt=prompt,
-    #     **generation_args,
-    # )
-    # with header_footer_context("Responses after peft merge_and_unload"):
-    #     for i, response in enumerate(responses, start=1):
-    #         print(f"Response {i}:\n{response}")
+
+    model.save_pretrained_merged(
+        unsloth_merged_path,
+        tokenizer,
+        save_method="merged_16bit",
+    )
+    merged_model_unsloth, tokenizer = get_unsloth_model_and_tokenizer(
+        unsloth_merged_path,
+        max_seq_length=512,
+        load_in_4bit=False,
+        fast_inference=False,
+        dtype=dtype,
+    )
+    responses = sample_responses(
+        merged_model_unsloth,
+        tokenizer,
+        prompt=prompt,
+        **generation_args,
+    )
+    with header_footer_context("Responses after unsloth merge to 16bit"):
+        for i, response in enumerate(responses, start=1):
+            print(f"Response {i}:\n{response}")
