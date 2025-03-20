@@ -8,10 +8,6 @@
 *.pyc
 *.pyo
 *.pyd
-*.py
-*.pyw
-*.pyz
-*.py
 __pycache__
 *.ipynb_checkpoints
 *.pth

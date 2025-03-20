@@ -102,7 +102,7 @@ def get_peft_config(
     )
     return peft_config
 
-def setup_trainer(model, tokenizer, dataset, peft_config, train_args, formatting_func=None, collator=None):
+def setup_trainer(model, tokenizer, dataset, train_args, peft_config=None,formatting_func=None, collator=None):
     return SFTTrainer(
         model=model,
         peft_config=peft_config,
