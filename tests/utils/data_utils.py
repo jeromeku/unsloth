@@ -106,3 +106,4 @@ def get_peft_weights(model):
 def describe_peft_weights(model):
     for name, param in get_peft_weights(model).items():
         yield name, describe_param(param, as_str=True)
+

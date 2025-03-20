@@ -122,17 +122,17 @@ if __name__ == "__main__":
         prompt=prompt,
         **generation_args,
     )
-    with header_footer_context("Responses after merging to 16bit"):
+    with header_footer_context("Responses after custom merging to 16bit"):
         for i, response in enumerate(responses, start=1):
             print(f"Response {i}:\n{response}")
     
-    model_original_merge = convert_lora_to_linear(model_copy)
+    merged_model_peft = model_copy.merge_and_unload()
     responses = sample_responses(
-        model_original_merge,
+        merged_model_peft,
         tokenizer,
         prompt=prompt,
         **generation_args,
     )
-    with header_footer_context("Responses after original peft merge"):
+    with header_footer_context("Responses after peft merge_and_unload"):
         for i, response in enumerate(responses, start=1):
             print(f"Response {i}:\n{response}")
