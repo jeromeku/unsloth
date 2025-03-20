@@ -1,4 +1,5 @@
 import itertools
+from copy import deepcopy
 
 import torch
 from datasets import Dataset
@@ -37,11 +38,30 @@ if __name__ == "__main__":
     
     peft_config = get_peft_config(lora_rank=lora_rank, target_modules="all-linear")
     model = setup_model(model_name, quantize=True, dtype=dtype, peft_config=peft_config)
-    
-    with patch_bnb_merge(debug=True):
-        model.merge_and_unload(safe_merge=True, adapter_names=["default"])
-    import sys; sys.exit(0)
 
+    import bitsandbytes as bnb
+    from bitsandbytes.functional import dequantize_4bit
+    from peft.tuners.lora.bnb import Linear4bit, LoraLayer
+    from utils.hf_utils import replace_module
+    
+    def convert_lora_to_linear(module: LoraLayer):
+        base_layer = module.get_base_layer()
+        breakpoint()
+        weight = base_layer.weight
+
+        assert isinstance(base_layer, bnb.nn.Params4bit)
+        quant_state = weight.quant_state
+        w_dq = dequantize_4bit(weight.data, quant_state)
+        new_module = torch.nn.Linear(w_dq.shape[1], w_dq.shape[0], bias=module.base_layer.bias is not None)
+        new_module.weight.data = w_dq
+        new_module.bias.data = module.base_layer.bias.data
+        return new_module
+    
+    replace_module(model, LoraLayer, convert_lora_to_linear)
+    for name, module in model.named_modules():
+        if isinstance(module, LoraLayer):
+            print(f"DEBUG::{name} is a LoraLayer")
+    import sys; sys.exit(0)
     dataset: Dataset = create_dataset(
         tokenizer, num_examples=1000, messages=DEFAULT_MESSAGES
     )
@@ -111,7 +131,10 @@ if __name__ == "__main__":
         for i, response in enumerate(responses, start=1):
             print(f"Response {i}:\n{response}")
 
-    merged_model = model.merge_and_unload(safe_merge=True, adapter_names=["default"])
+    model_copy = deepcopy(model)
+    
+    with patch_bnb_merge():
+        merged_model = model.merge_and_unload(safe_merge=True, adapter_names=["default"])
     
     responses = sample_responses(
         merged_model,
@@ -119,6 +142,17 @@ if __name__ == "__main__":
         prompt=prompt,
         **generation_args,
     )
-    with header_footer_context("Responses after merging LoRA weights"):
+    with header_footer_context("Responses after merging to 16bit"):
+        for i, response in enumerate(responses, start=1):
+            print(f"Response {i}:\n{response}")
+    
+    model_original_merge = model_copy.merge_and_unload(safe_merge=True, adapter_names=["default"])
+    responses = sample_responses(
+        model_original_merge,
+        tokenizer,
+        prompt=prompt,
+        **generation_args,
+    )
+    with header_footer_context("Responses after original peft merge"):
         for i, response in enumerate(responses, start=1):
             print(f"Response {i}:\n{response}")

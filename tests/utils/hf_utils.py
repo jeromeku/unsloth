@@ -207,3 +207,11 @@ def merge_to_original_dtype(self, safe_merge: bool = False, adapter_names: Optio
             self.get_base_layer().bias.data = bias_data.to(device=weight.device, dtype=weight.quant_state.dtype)
 
         self.merged_adapters.append(active_adapter)
+
+def replace_module(module: torch.nn.Module, target_module_type: torch.nn.Module, conversion_func: Callable):
+    for child_name, child_module in module.named_children():
+        if isinstance(child_module, target_module_type):
+            new_module = conversion_func(child_module)
+            setattr(module, child_name, new_module)
+        else:
+            replace_module(child_module, target_module_type, conversion_func)
