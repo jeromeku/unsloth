@@ -107,3 +107,12 @@ def describe_peft_weights(model):
     for name, param in get_peft_weights(model).items():
         yield name, describe_param(param, as_str=True)
 
+def check_responses(responses: list[str], answer: str, prompt: str = None) -> bool:
+    for i, response in enumerate(responses, start=1):
+        if answer in response:
+            print(f"\u2713 response {i} contains answer")
+        else:
+            print(f"\u2717 response {i} does not contain answer")
+            if prompt is not None:
+                response = response.replace(prompt, "")
+            print(f" -> response: {response}")

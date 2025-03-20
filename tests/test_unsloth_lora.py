@@ -13,8 +13,10 @@ from utils import header_footer_context, timer
 from utils.data_utils import (
     DEFAULT_MESSAGES,
     USER_MESSAGE,
+    ANSWER,
     create_dataset,
     describe_peft_weights,
+    check_responses,
 )
 from utils.hf_utils import (
     convert_lora_to_linear,
@@ -149,9 +151,7 @@ if __name__ == "__main__":
         **generation_args,
     )
     with header_footer_context("Responses before training"):
-        for i, response in enumerate(responses, start=1):
-            print(f"Response {i}:\n{response}")
-
+        check_responses(responses, answer=ANSWER, prompt=prompt)
     with header_footer_context("Peft Weights before training"):
         for name, stats in itertools.islice(describe_peft_weights(model), 2):
             print(f"{name}:\n{stats}")
@@ -171,22 +171,7 @@ if __name__ == "__main__":
         **generation_args,
     )
     with header_footer_context("Responses after training"):
-        for i, response in enumerate(responses, start=1):
-            print(f"Response {i}:\n{response}")
-
-    #model_copy = deepcopy(model)
-
-    # merged_model = convert_lora_to_linear(model)
-
-    # responses = sample_responses(
-    #     merged_model,
-    #     tokenizer,
-    #     prompt=prompt,
-    #     **generation_args,
-    # )
-    # with header_footer_context("Responses after custom merging to 16bit"):
-    #     for i, response in enumerate(responses, start=1):
-    #         print(f"Response {i}:\n{response}")
+        check_responses(responses, answer=ANSWER, prompt=prompt)
 
     model.save_pretrained_merged(
         unsloth_merged_path,
@@ -207,5 +192,4 @@ if __name__ == "__main__":
         **generation_args,
     )
     with header_footer_context("Responses after unsloth merge to 16bit"):
-        for i, response in enumerate(responses, start=1):
-            print(f"Response {i}:\n{response}")
+        check_responses(responses, answer=ANSWER, prompt=prompt)

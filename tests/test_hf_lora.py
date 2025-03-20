@@ -3,13 +3,13 @@ from copy import deepcopy
 
 import torch
 from datasets import Dataset
-from peft.tuners.lora.bnb import Linear4bit
-from transformers import AutoTokenizer
 from trl import SFTConfig
-from utils import header_footer_context, timer
+from utils import header_footer_context
 from utils.data_utils import (
+    ANSWER,
     DEFAULT_MESSAGES,
     USER_MESSAGE,
+    check_responses,
     create_dataset,
     describe_peft_weights,
 )
@@ -17,7 +17,6 @@ from utils.hf_utils import (
     convert_lora_to_linear,
     fix_llama3_tokenizer,
     get_peft_config,
-    patch_bnb_merge,
     sample_responses,
     setup_model,
     setup_tokenizer,
@@ -87,8 +86,7 @@ if __name__ == "__main__":
         **generation_args,
     )
     with header_footer_context("Responses before training"):
-        for i, response in enumerate(responses, start=1):
-            print(f"Response {i}:\n{response}")
+        check_responses(responses, answer=ANSWER, prompt=prompt)
 
     with header_footer_context("Peft Weights before training"):
         for name, stats in itertools.islice(describe_peft_weights(model), 2):
@@ -109,8 +107,7 @@ if __name__ == "__main__":
         **generation_args,
     )
     with header_footer_context("Responses after training"):
-        for i, response in enumerate(responses, start=1):
-            print(f"Response {i}:\n{response}")
+        check_responses(responses, answer=ANSWER, prompt=prompt)
 
     model_copy = deepcopy(model)
     
@@ -123,8 +120,7 @@ if __name__ == "__main__":
         **generation_args,
     )
     with header_footer_context("Responses after custom merging to 16bit"):
-        for i, response in enumerate(responses, start=1):
-            print(f"Response {i}:\n{response}")
+        check_responses(responses, answer=ANSWER, prompt=prompt)
     
     merged_model_peft = model_copy.merge_and_unload()
     responses = sample_responses(
@@ -134,5 +130,4 @@ if __name__ == "__main__":
         **generation_args,
     )
     with header_footer_context("Responses after peft merge_and_unload"):
-        for i, response in enumerate(responses, start=1):
-            print(f"Response {i}:\n{response}")
+        check_responses(responses, answer=ANSWER, prompt=prompt)
