@@ -9,22 +9,11 @@ from trl import SFTConfig, SFTTrainer
 from unsloth import FastVisionModel, is_bf16_supported  # FastLanguageModel for LLMs
 from unsloth.trainer import UnslothVisionDataCollator
 
-# 4bit pre quantized models we support for 4x faster downloading + no OOMs.
-fourbit_models = [
-    "unsloth/Llama-3.2-11B-Vision-Instruct-bnb-4bit",  # Llama 3.2 vision support
-    "unsloth/Llama-3.2-11B-Vision-bnb-4bit",
-    "unsloth/Llama-3.2-90B-Vision-Instruct-bnb-4bit",  # Can fit in a 80GB card!
-    "unsloth/Llama-3.2-90B-Vision-bnb-4bit",
-    "unsloth/Pixtral-12B-2409-bnb-4bit",  # Pixtral fits in 16GB!
-    "unsloth/Pixtral-12B-Base-2409-bnb-4bit",  # Pixtral base model
-    "unsloth/Qwen2-VL-2B-Instruct-bnb-4bit",  # Qwen2 VL support
-    "unsloth/Qwen2-VL-7B-Instruct-bnb-4bit",
-    "unsloth/Qwen2-VL-72B-Instruct-bnb-4bit",
-    "unsloth/llava-v1.6-mistral-7b-hf-bnb-4bit",  # Any Llava variant works!
-    "unsloth/llava-1.5-7b-hf-bnb-4bit",
-]  # More models at https://huggingface.co/unsloth
-
 MODEL_NAME = "unsloth/Qwen2-VL-7B-Instruct"
+DATASET_NAME = "unsloth/LaTeX_OCR"
+
+INSTRUCTION = "Write the LaTeX representation for this image."
+
 FINE_TUNE_CONFIG = {
     "finetune_vision_layers": True,
     "finetune_language_layers": True,
@@ -39,35 +28,59 @@ LORA_CONFIG = {
     "use_rslora": False,
     "loftq_config": None,
 }
+DTYPE = torch.bfloat16
+TRAIN_CONFIG = {
+    "per_device_train_batch_size": 2,
+    "gradient_accumulation_steps": 4,
+    "warmup_steps": 5,
+    "max_steps": 30,
+    "learning_rate": 2e-4,
+    "fp16": DTYPE == torch.float16,
+    "bf16": DTYPE == torch.bfloat16,
+    "optim": "adamw_8bit",
+    "weight_decay": 0.01,
+    "lr_scheduler_type": "linear",
+    "seed": 3407,
+}
 
-model, tokenizer = FastVisionModel.from_pretrained(
-    MODEL_NAME,
-    load_in_4bit=True,  # Use 4bit to reduce memory use. False for 16bit LoRA.
-    use_gradient_checkpointing="unsloth",  # True or "unsloth" for long context
-)
+LOG_CONFIG = {
+    "logging_steps": 1,
+    "output_dir": "qwen-vl-outputs",
+    "report_to": "none",
+}
 
-model = FastVisionModel.get_peft_model(
-    model,
-    **FINE_TUNE_CONFIG,
-    **LORA_CONFIG,
-    random_state=3407,
-    # target_modules = "all-linear", # Optional now! Can specify a list if needed
-)
+DATASET_CONFIG = {
+    "remove_unused_columns": False,
+    "dataset_text_field": "",
+    "dataset_kwargs": {"skip_prepare_dataset": True},
+    "dataset_num_proc": 4,
+    "max_seq_length": 2048,
+}
 
-dataset = load_dataset("unsloth/LaTeX_OCR", split="train")
+SAVE_PATH = "qwen_vl_lora_model"
 
-dataset[2]["image"]
+def prepare_model_and_tokenizer(model_name, fine_tune_config: dict, lora_config: dict, load_in_4bit=True, use_gradient_checkpointing="unsloth", random_state=3407, **kwargs):
+    model, tokenizer = FastVisionModel.from_pretrained(
+        model_name,
+        load_in_4bit=load_in_4bit,  # Use 4bit to reduce memory use. False for 16bit LoRA.
+        use_gradient_checkpointing=use_gradient_checkpointing,  # True or "unsloth" for long context
+    )
 
-dataset[2]["text"]
+    model = FastVisionModel.get_peft_model(
+        model,
+        **fine_tune_config,
+        **lora_config,
+        random_state=random_state,
+        # target_modules = "all-linear", # Optional now! Can specify a list if needed
+    )
 
-latex = dataset[2]["text"]
-display(Math(latex))
+    return model, tokenizer
 
+def prepare_dataset(dataset_name, split="train"):
+    dataset = load_dataset(dataset_name, split=split)
+    return dataset
 
-instruction = "Write the LaTeX representation for this image."
-
-
-def convert_to_conversation(sample):
+def convert_to_conversation(sample, instruction=INSTRUCTION):
     conversation = [
         {
             "role": "user",
@@ -81,171 +94,92 @@ def convert_to_conversation(sample):
     return {"messages": conversation}
 
 
-pass
+def generate_image_text(model, tokenizer, image, instruction=INSTRUCTION, temperature=1.5, min_p=0.1, max_new_tokens=128, use_cache=True):
 
-converted_dataset = [convert_to_conversation(sample) for sample in dataset]
+    messages = [
+        {
+            "role": "user",
+            "content": [{"type": "image"}, {"type": "text", "text": instruction}],
+        }
+    ]
+    input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+    inputs = tokenizer(
+        image,
+        input_text,
+        add_special_tokens=False,
+        return_tensors="pt",
+    ).to("cuda")
 
-converted_dataset[0]
+    text_streamer = TextStreamer(tokenizer, skip_prompt=True)
+    return model.generate(
+        **inputs,
+        streamer=text_streamer,
+        max_new_tokens=max_new_tokens,
+        use_cache=use_cache,
+        temperature=temperature,
+        min_p=min_p,
+    )
 
-FastVisionModel.for_inference(model)  # Enable for inference!
+if __name__ == "__main__":
+    model, tokenizer = prepare_model_and_tokenizer(MODEL_NAME, FINE_TUNE_CONFIG, LORA_CONFIG)
+    dataset = prepare_dataset(DATASET_NAME)
+    converted_dataset = [convert_to_conversation(sample) for sample in dataset]
 
-image = dataset[2]["image"]
-instruction = "Write the LaTeX representation for this image."
 
-messages = [
-    {
-        "role": "user",
-        "content": [{"type": "image"}, {"type": "text", "text": instruction}],
-    }
-]
-input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-inputs = tokenizer(
-    image,
-    input_text,
-    add_special_tokens=False,
-    return_tensors="pt",
-).to("cuda")
-
-text_streamer = TextStreamer(tokenizer, skip_prompt=True)
-_ = model.generate(
-    **inputs,
-    streamer=text_streamer,
-    max_new_tokens=128,
-    use_cache=True,
-    temperature=1.5,
-    min_p=0.1,
+    trainer = SFTTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        data_collator=UnslothVisionDataCollator(model, tokenizer),  # Must use!
+        train_dataset=converted_dataset,
+        args=SFTConfig(
+            **TRAIN_CONFIG,
+            **LOG_CONFIG,
+            **DATASET_CONFIG,
+        ),
 )
 
-FastVisionModel.for_training(model)  # Enable for training!
+    gpu_stats = torch.cuda.get_device_properties(0)
+    start_gpu_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
+    max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
+    print(f"GPU = {gpu_stats.name}. Max memory = {max_memory} GB.")
+    print(f"{start_gpu_memory} GB of memory reserved.")
 
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    data_collator=UnslothVisionDataCollator(model, tokenizer),  # Must use!
-    train_dataset=converted_dataset,
-    args=SFTConfig(
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=4,
-        warmup_steps=5,
-        max_steps=30,
-        # num_train_epochs = 1, # Set this instead of max_steps for full training runs
-        learning_rate=2e-4,
-        fp16=not is_bf16_supported(),
-        bf16=is_bf16_supported(),
-        logging_steps=1,
-        optim="adamw_8bit",
-        weight_decay=0.01,
-        lr_scheduler_type="linear",
-        seed=3407,
-        output_dir="outputs",
-        report_to="none",  # For Weights and Biases
-        # You MUST put the below items for vision finetuning:
-        remove_unused_columns=False,
-        dataset_text_field="",
-        dataset_kwargs={"skip_prepare_dataset": True},
-        dataset_num_proc=4,
-        max_seq_length=2048,
-    ),
-)
+    trainer_stats = trainer.train()
 
-gpu_stats = torch.cuda.get_device_properties(0)
-start_gpu_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
-max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
-print(f"GPU = {gpu_stats.name}. Max memory = {max_memory} GB.")
-print(f"{start_gpu_memory} GB of memory reserved.")
+    used_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
+    used_memory_for_lora = round(used_memory - start_gpu_memory, 3)
+    used_percentage = round(used_memory / max_memory * 100, 3)
+    lora_percentage = round(used_memory_for_lora / max_memory * 100, 3)
+    print(f"{trainer_stats.metrics['train_runtime']} seconds used for training.")
+    print(
+        f"{round(trainer_stats.metrics['train_runtime'] / 60, 2)} minutes used for training."
+    )
+    print(f"Peak reserved memory = {used_memory} GB.")
+    print(f"Peak reserved memory for training = {used_memory_for_lora} GB.")
+    print(f"Peak reserved memory % of max memory = {used_percentage} %.")
+    print(f"Peak reserved memory for training % of max memory = {lora_percentage} %.")
 
-trainer_stats = trainer.train()
+    FastVisionModel.for_inference(model)  # Enable for inference!
 
-used_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
-used_memory_for_lora = round(used_memory - start_gpu_memory, 3)
-used_percentage = round(used_memory / max_memory * 100, 3)
-lora_percentage = round(used_memory_for_lora / max_memory * 100, 3)
-print(f"{trainer_stats.metrics['train_runtime']} seconds used for training.")
-print(
-    f"{round(trainer_stats.metrics['train_runtime'] / 60, 2)} minutes used for training."
-)
-print(f"Peak reserved memory = {used_memory} GB.")
-print(f"Peak reserved memory for training = {used_memory_for_lora} GB.")
-print(f"Peak reserved memory % of max memory = {used_percentage} %.")
-print(f"Peak reserved memory for training % of max memory = {lora_percentage} %.")
+    image = dataset[2]["image"]
 
-FastVisionModel.for_inference(model)  # Enable for inference!
+    outputs = generate_image_text(model, tokenizer, image, instruction=INSTRUCTION)
+    print(outputs)
 
-image = dataset[2]["image"]
-instruction = "Write the LaTeX representation for this image."
+    model.save_pretrained(SAVE_PATH)  # Local saving
+    tokenizer.save_pretrained(SAVE_PATH)
 
-messages = [
-    {
-        "role": "user",
-        "content": [{"type": "image"}, {"type": "text", "text": instruction}],
-    }
-]
-input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-inputs = tokenizer(
-    image,
-    input_text,
-    add_special_tokens=False,
-    return_tensors="pt",
-).to("cuda")
-
-text_streamer = TextStreamer(tokenizer, skip_prompt=True)
-_ = model.generate(
-    **inputs,
-    streamer=text_streamer,
-    max_new_tokens=128,
-    use_cache=True,
-    temperature=1.5,
-    min_p=0.1,
-)
-
-model.save_pretrained("lora_model")  # Local saving
-tokenizer.save_pretrained("lora_model")
-
-if False:
     model, tokenizer = FastVisionModel.from_pretrained(
-        model_name="lora_model",  # YOUR MODEL YOU USED FOR TRAINING
+        model_name=SAVE_PATH,  # YOUR MODEL YOU USED FOR TRAINING
         load_in_4bit=True,  # Set to False for 16bit LoRA
     )
     FastVisionModel.for_inference(model)  # Enable for inference!
 
-image = dataset[0]["image"]
-instruction = "Write the LaTeX representation for this image."
+    output_from_pretrained = generate_image_text(model, tokenizer, image, instruction=INSTRUCTION)
+    print(output_from_pretrained)
 
-messages = [
-    {
-        "role": "user",
-        "content": [{"type": "image"}, {"type": "text", "text": instruction}],
-    }
-]
-input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-inputs = tokenizer(
-    image,
-    input_text,
-    add_special_tokens=False,
-    return_tensors="pt",
-).to("cuda")
-
-text_streamer = TextStreamer(tokenizer, skip_prompt=True)
-_ = model.generate(
-    **inputs,
-    streamer=text_streamer,
-    max_new_tokens=128,
-    use_cache=True,
-    temperature=1.5,
-    min_p=0.1,
-)
-
-# Select ONLY 1 to save! (Both not needed!)
-
-# Save locally to 16bit
-if False:
-    model.save_pretrained_merged(
-        "unsloth_finetune",
-        tokenizer,
-    )
-
-# To export and save to your Hugging Face account
-if False:
-    model.push_to_hub_merged(
-        "YOUR_USERNAME/unsloth_finetune", tokenizer, token="PUT_HERE"
-    )
+    if False:
+        model.save_pretrained_merged(
+            "unsloth_finetune",
+            tokenizer,
+        )
