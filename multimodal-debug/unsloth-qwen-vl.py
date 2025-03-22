@@ -1,13 +1,20 @@
-import os
+# ruff: noqa
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parents[1]
+sys.path.append(str(REPO_ROOT))
+
+from contextlib import contextmanager
+from unsloth import FastVisionModel  # FastLanguageModel for LLMs
+from unsloth.trainer import UnslothVisionDataCollator
 
 import torch
 from datasets import load_dataset
-from IPython.display import Latex, Math, display
 from transformers import TextStreamer
 from trl import SFTConfig, SFTTrainer
 
-from unsloth import FastVisionModel, is_bf16_supported  # FastLanguageModel for LLMs
-from unsloth.trainer import UnslothVisionDataCollator
+from tests.utils import header_footer_context
 
 MODEL_NAME = "unsloth/Qwen2-VL-7B-Instruct"
 DATASET_NAME = "unsloth/LaTeX_OCR"
@@ -59,7 +66,16 @@ DATASET_CONFIG = {
 
 SAVE_PATH = "qwen_vl_lora_model"
 
-def prepare_model_and_tokenizer(model_name, fine_tune_config: dict, lora_config: dict, load_in_4bit=True, use_gradient_checkpointing="unsloth", random_state=3407, **kwargs):
+
+def prepare_model_and_tokenizer(
+    model_name,
+    fine_tune_config: dict,
+    lora_config: dict,
+    load_in_4bit=True,
+    use_gradient_checkpointing="unsloth",
+    random_state=3407,
+    **kwargs,
+):
     model, tokenizer = FastVisionModel.from_pretrained(
         model_name,
         load_in_4bit=load_in_4bit,  # Use 4bit to reduce memory use. False for 16bit LoRA.
@@ -76,9 +92,11 @@ def prepare_model_and_tokenizer(model_name, fine_tune_config: dict, lora_config:
 
     return model, tokenizer
 
+
 def prepare_dataset(dataset_name, split="train"):
     dataset = load_dataset(dataset_name, split=split)
     return dataset
+
 
 def convert_to_conversation(sample, instruction=INSTRUCTION):
     conversation = [
@@ -94,8 +112,16 @@ def convert_to_conversation(sample, instruction=INSTRUCTION):
     return {"messages": conversation}
 
 
-def generate_image_text(model, tokenizer, image, instruction=INSTRUCTION, temperature=1.5, min_p=0.1, max_new_tokens=128, use_cache=True):
-
+def generate_image_text(
+    model,
+    tokenizer,
+    image,
+    instruction=INSTRUCTION,
+    temperature=1.5,
+    min_p=0.1,
+    max_new_tokens=128,
+    use_cache=True,
+):
     messages = [
         {
             "role": "user",
@@ -120,11 +146,19 @@ def generate_image_text(model, tokenizer, image, instruction=INSTRUCTION, temper
         min_p=min_p,
     )
 
+@contextmanager
+def inference_context(model):
+    FastVisionModel.for_inference(model)
+    yield
+    FastVisionModel.for_training(model)
+
 if __name__ == "__main__":
-    model, tokenizer = prepare_model_and_tokenizer(MODEL_NAME, FINE_TUNE_CONFIG, LORA_CONFIG)
+    model, tokenizer = prepare_model_and_tokenizer(
+        MODEL_NAME, FINE_TUNE_CONFIG, LORA_CONFIG
+    )
     dataset = prepare_dataset(DATASET_NAME)
     converted_dataset = [convert_to_conversation(sample) for sample in dataset]
-
+    image = dataset[2]["image"]
 
     trainer = SFTTrainer(
         model=model,
@@ -136,8 +170,12 @@ if __name__ == "__main__":
             **LOG_CONFIG,
             **DATASET_CONFIG,
         ),
-)
+    )
 
+    with header_footer_context("Before Training"), inference_context(model):
+        outputs = generate_image_text(model, tokenizer, image, instruction=INSTRUCTION)
+        print(outputs)
+    
     gpu_stats = torch.cuda.get_device_properties(0)
     start_gpu_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
     max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
@@ -159,12 +197,9 @@ if __name__ == "__main__":
     print(f"Peak reserved memory % of max memory = {used_percentage} %.")
     print(f"Peak reserved memory for training % of max memory = {lora_percentage} %.")
 
-    FastVisionModel.for_inference(model)  # Enable for inference!
-
-    image = dataset[2]["image"]
-
-    outputs = generate_image_text(model, tokenizer, image, instruction=INSTRUCTION)
-    print(outputs)
+    with header_footer_context("After Training"), inference_context(model):
+        outputs = generate_image_text(model, tokenizer, image, instruction=INSTRUCTION)
+        print(outputs)
 
     model.save_pretrained(SAVE_PATH)  # Local saving
     tokenizer.save_pretrained(SAVE_PATH)
@@ -173,13 +208,15 @@ if __name__ == "__main__":
         model_name=SAVE_PATH,  # YOUR MODEL YOU USED FOR TRAINING
         load_in_4bit=True,  # Set to False for 16bit LoRA
     )
-    FastVisionModel.for_inference(model)  # Enable for inference!
-
-    output_from_pretrained = generate_image_text(model, tokenizer, image, instruction=INSTRUCTION)
-    print(output_from_pretrained)
-
-    if False:
-        model.save_pretrained_merged(
-            "unsloth_finetune",
-            tokenizer,
+    
+    with header_footer_context("After Loading"), inference_context(model):
+        output_from_pretrained = generate_image_text(
+            model, tokenizer, image, instruction=INSTRUCTION
         )
+        print(output_from_pretrained)
+
+    # if False:
+    #     model.save_pretrained_merged(
+    #         "unsloth_finetune",
+    #         tokenizer,
+    #     )
