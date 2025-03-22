@@ -25,6 +25,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    PretrainedConfig,
 )
 from transformers.trainer_callback import (
     TrainerCallback,
@@ -126,10 +127,15 @@ def sample_responses(
     return responses
 
 
-def setup_tokenizer(model_name, fixup_funcs: list[Callable] = []):
+def setup_tokenizer(model_name, fixup_funcs: list[Callable] = None):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+    if fixup_funcs is None:
+        return tokenizer
+
+    fixup_funcs = [fixup_funcs] if isinstance(fixup_funcs, Callable) else fixup_funcs
     for fixup_func in fixup_funcs:
         tokenizer = fixup_func(tokenizer)
+        
     return tokenizer
 
 
@@ -289,3 +295,13 @@ def convert_lora_to_linear(model: torch.nn.Module):
     replace_module(model, LoraLayer, _convert_lora_to_linear)
     assert not any(isinstance(module, LoraLayer) for module in model.modules())
     return model
+
+def compare_hf_unsloth_config(hf_config: PretrainedConfig, unsloth_config: PretrainedConfig):
+    hf_config_dict = hf_config.to_dict()
+    unsloth_config_dict = unsloth_config.to_dict()
+    for k, v in unsloth_config_dict.items():
+        if k not in hf_config_dict:
+            print(f"{k} not in hf_config")
+        else:
+            if v != hf_config_dict[k]:
+                print(f"{k} not equal: {v} != {hf_config_dict[k]}")
