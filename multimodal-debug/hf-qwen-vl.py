@@ -29,13 +29,13 @@ FINE_TUNE_CONFIG = {
     "finetune_mlp_modules": True,
 }
 LORA_CONFIG = {
-    "r": 16,
+    "lora_rank": 16,
     "lora_alpha": 16,
     "lora_dropout": 0,
     "bias": "none",
-    "use_rslora": False,
-    "loftq_config": None,
+    "target_modules": "all-linear",
 }
+
 DTYPE = torch.bfloat16
 TRAIN_CONFIG = {
     "per_device_train_batch_size": 2,
@@ -67,31 +67,6 @@ DATASET_CONFIG = {
 
 SAVE_PATH = "qwen_vl_lora_model"
 
-
-def prepare_model_and_tokenizer(
-    model_name,
-    fine_tune_config: dict,
-    lora_config: dict,
-    load_in_4bit=True,
-    use_gradient_checkpointing="unsloth",
-    random_state=3407,
-    **kwargs,
-):
-    model, tokenizer = FastVisionModel.from_pretrained(
-        model_name,
-        load_in_4bit=load_in_4bit,  # Use 4bit to reduce memory use. False for 16bit LoRA.
-        use_gradient_checkpointing=use_gradient_checkpointing,  # True or "unsloth" for long context
-    )
-
-    model = FastVisionModel.get_peft_model(
-        model,
-        **fine_tune_config,
-        **lora_config,
-        random_state=random_state,
-        # target_modules = "all-linear", # Optional now! Can specify a list if needed
-    )
-
-    return model, tokenizer
 
 
 def prepare_dataset(dataset_name, split="train"):
@@ -147,12 +122,6 @@ def generate_image_text(
         min_p=min_p,
     )
 
-@contextmanager
-def inference_context(model):
-    FastVisionModel.for_inference(model)
-    yield
-    FastVisionModel.for_training(model)
-
 if __name__ == "__main__":
 
     def fixup_func(tokenizer):
@@ -163,14 +132,13 @@ if __name__ == "__main__":
         return tokenizer
 
     tokenizer = setup_tokenizer(HF_MODEL_NAME, fixup_funcs=fixup_func)
-    test_prompts = ["Hello!", "This sentence is longer than the others."]
-    encoded = tokenizer(test_prompts, return_tensors="pt", padding=True, padding_side="right")
-    decoded = tokenizer.batch_decode(encoded.input_ids, skip_special_tokens=False)
-    print(decoded[0])
-    # dataset = prepare_dataset(DATASET_NAME)
-    # converted_dataset = [convert_to_conversation(sample) for sample in dataset]
-    # image = dataset[2]["image"]
+  
+    dataset = prepare_dataset(DATASET_NAME)
+    converted_dataset = [convert_to_conversation(sample) for sample in dataset]
+    image = dataset[2]["image"]
 
+    peft_config = get_peft_config(**LORA_CONFIG)
+    #model = setup_model(HF_MODEL_NAME, quantize=True, dtype=DTYPE)
     # trainer = SFTTrainer(
     #     model=model,
     #     tokenizer=tokenizer,
