@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-from contextlib import contextmanager, nullcontext
-from typing import Callable, Optional
+
+from contextlib import nullcontext
+from typing import Callable, Union
 
 import bitsandbytes as bnb
 import torch
@@ -26,6 +26,8 @@ from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
     PretrainedConfig,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerBase,
 )
 from transformers.trainer_callback import (
     TrainerCallback,
@@ -127,15 +129,21 @@ def sample_responses(
     return responses
 
 
-def setup_tokenizer(model_name, fixup_funcs: list[Callable] = None):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+def setup_tokenizer(model_name: Union[str, PreTrainedTokenizerBase], fixup_funcs: list[Callable] = None):
+    if isinstance(model_name, str):
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+    elif isinstance(model_name, PreTrainedTokenizerBase):
+        tokenizer = model_name
+    else:
+        raise ValueError(f"Must pass a path to model or a PreTrainedTokenizer, got {type(model_name)}")
+
     if fixup_funcs is None:
         return tokenizer
 
     fixup_funcs = [fixup_funcs] if isinstance(fixup_funcs, Callable) else fixup_funcs
     for fixup_func in fixup_funcs:
         tokenizer = fixup_func(tokenizer)
-        
+
     return tokenizer
 
 

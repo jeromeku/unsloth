@@ -172,51 +172,55 @@ if __name__ == "__main__":
         ),
     )
 
-    with header_footer_context("Before Training"), inference_context(model):
-        outputs = generate_image_text(model, tokenizer, image, instruction=INSTRUCTION)
-        print(outputs)
+    train_batch = trainer.get_train_dataloader()
+    batch = next(iter(train_batch))
+    output = tokenizer.decode(batch["input_ids"][0], skip_special_tokens=False)
+    print(output)
+    # with header_footer_context("Before Training"), inference_context(model):
+    #     outputs = generate_image_text(model, tokenizer, image, instruction=INSTRUCTION)
+    #     print(outputs)
     
-    gpu_stats = torch.cuda.get_device_properties(0)
-    start_gpu_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
-    max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
-    print(f"GPU = {gpu_stats.name}. Max memory = {max_memory} GB.")
-    print(f"{start_gpu_memory} GB of memory reserved.")
+    # gpu_stats = torch.cuda.get_device_properties(0)
+    # start_gpu_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
+    # max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
+    # print(f"GPU = {gpu_stats.name}. Max memory = {max_memory} GB.")
+    # print(f"{start_gpu_memory} GB of memory reserved.")
 
-    trainer_stats = trainer.train()
+    # trainer_stats = trainer.train()
 
-    used_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
-    used_memory_for_lora = round(used_memory - start_gpu_memory, 3)
-    used_percentage = round(used_memory / max_memory * 100, 3)
-    lora_percentage = round(used_memory_for_lora / max_memory * 100, 3)
-    print(f"{trainer_stats.metrics['train_runtime']} seconds used for training.")
-    print(
-        f"{round(trainer_stats.metrics['train_runtime'] / 60, 2)} minutes used for training."
-    )
-    print(f"Peak reserved memory = {used_memory} GB.")
-    print(f"Peak reserved memory for training = {used_memory_for_lora} GB.")
-    print(f"Peak reserved memory % of max memory = {used_percentage} %.")
-    print(f"Peak reserved memory for training % of max memory = {lora_percentage} %.")
+    # used_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
+    # used_memory_for_lora = round(used_memory - start_gpu_memory, 3)
+    # used_percentage = round(used_memory / max_memory * 100, 3)
+    # lora_percentage = round(used_memory_for_lora / max_memory * 100, 3)
+    # print(f"{trainer_stats.metrics['train_runtime']} seconds used for training.")
+    # print(
+    #     f"{round(trainer_stats.metrics['train_runtime'] / 60, 2)} minutes used for training."
+    # )
+    # print(f"Peak reserved memory = {used_memory} GB.")
+    # print(f"Peak reserved memory for training = {used_memory_for_lora} GB.")
+    # print(f"Peak reserved memory % of max memory = {used_percentage} %.")
+    # print(f"Peak reserved memory for training % of max memory = {lora_percentage} %.")
 
-    with header_footer_context("After Training"), inference_context(model):
-        outputs = generate_image_text(model, tokenizer, image, instruction=INSTRUCTION)
-        print(outputs)
+    # with header_footer_context("After Training"), inference_context(model):
+    #     outputs = generate_image_text(model, tokenizer, image, instruction=INSTRUCTION)
+    #     print(outputs)
 
-    model.save_pretrained(SAVE_PATH)  # Local saving
-    tokenizer.save_pretrained(SAVE_PATH)
+    # model.save_pretrained(SAVE_PATH)  # Local saving
+    # tokenizer.save_pretrained(SAVE_PATH)
 
-    model, tokenizer = FastVisionModel.from_pretrained(
-        model_name=SAVE_PATH,  # YOUR MODEL YOU USED FOR TRAINING
-        load_in_4bit=True,  # Set to False for 16bit LoRA
-    )
+    # model, tokenizer = FastVisionModel.from_pretrained(
+    #     model_name=SAVE_PATH,  # YOUR MODEL YOU USED FOR TRAINING
+    #     load_in_4bit=True,  # Set to False for 16bit LoRA
+    # )
     
-    with header_footer_context("After Loading"), inference_context(model):
-        output_from_pretrained = generate_image_text(
-            model, tokenizer, image, instruction=INSTRUCTION
-        )
-        print(output_from_pretrained)
-
-    # if False:
-    #     model.save_pretrained_merged(
-    #         "unsloth_finetune",
-    #         tokenizer,
+    # with header_footer_context("After Loading"), inference_context(model):
+    #     output_from_pretrained = generate_image_text(
+    #         model, tokenizer, image, instruction=INSTRUCTION
     #     )
+    #     print(output_from_pretrained)
+
+    # # if False:
+    # #     model.save_pretrained_merged(
+    # #         "unsloth_finetune",
+    # #         tokenizer,
+    # #     )

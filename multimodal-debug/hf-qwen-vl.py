@@ -9,8 +9,12 @@ from contextlib import contextmanager
 
 import torch
 from datasets import load_dataset
-from transformers import TextStreamer
+from transformers import TextStreamer, Qwen2VLProcessor
 from trl import SFTConfig, SFTTrainer
+from qwen_vl_utils import process_vision_info
+
+import re
+
 
 from tests.utils import header_footer_context
 from tests.utils.hf_utils import get_peft_config, get_peft_model, setup_lora, setup_model, setup_tokenizer, setup_trainer
@@ -18,6 +22,10 @@ from tests.utils.hf_utils import get_peft_config, get_peft_model, setup_lora, se
 BASE_MODEL_NAME = "Qwen2-VL-7B-Instruct"
 UNSLOTH_MODEL_NAME = f"unsloth/{BASE_MODEL_NAME}"
 HF_MODEL_NAME = f"Qwen/{BASE_MODEL_NAME}"
+
+# Specific for Qwen2-VL
+IMAGE_TOKEN_REGEX = re.compile(r"(vision|video|image)")
+
 DATASET_NAME = "unsloth/LaTeX_OCR"
 
 INSTRUCTION = "Write the LaTeX representation for this image."
@@ -74,7 +82,7 @@ def prepare_dataset(dataset_name, split="train"):
     return dataset
 
 
-def convert_to_conversation(sample, instruction=INSTRUCTION):
+def convert_to_hf_conversation(sample, instruction=INSTRUCTION):
     conversation = [
         {
             "role": "user",
@@ -88,39 +96,23 @@ def convert_to_conversation(sample, instruction=INSTRUCTION):
     return {"messages": conversation}
 
 
-def generate_image_text(
-    model,
-    tokenizer,
-    image,
-    instruction=INSTRUCTION,
-    temperature=1.5,
-    min_p=0.1,
-    max_new_tokens=128,
-    use_cache=True,
-):
-    messages = [
-        {
-            "role": "user",
-            "content": [{"type": "image"}, {"type": "text", "text": instruction}],
-        }
-    ]
-    input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-    inputs = tokenizer(
-        image,
-        input_text,
-        add_special_tokens=False,
-        return_tensors="pt",
-    ).to("cuda")
+def collate_fn(processor: Qwen2VLProcessor, examples):
+    texts = [processor.apply_chat_template(example["messages"], tokenize=False) for example in examples]
+    images = [process_vision_info(example["messages"])[0] for example in examples]
 
-    text_streamer = TextStreamer(tokenizer, skip_prompt=True)
-    return model.generate(
-        **inputs,
-        streamer=text_streamer,
-        max_new_tokens=max_new_tokens,
-        use_cache=use_cache,
-        temperature=temperature,
-        min_p=min_p,
-    )
+    # Tokenize the texts and process the images
+    batch = processor(text=texts, images=images, return_tensors="pt", padding=True)
+
+    # The labels are the input_ids, and we mask the padding tokens in the loss computation
+    labels = batch["input_ids"].clone()
+    labels[labels == processor.tokenizer.pad_token_id] = -100  #
+    
+    # Ignore the image token index in the loss computation (model specific)
+    for image_token_id in processor.tokenizer.image_token_ids:
+        labels[labels == image_token_id] = -100
+    batch["labels"] = labels
+
+    return batch
 
 if __name__ == "__main__":
 
@@ -129,15 +121,29 @@ if __name__ == "__main__":
         pad_token = next((t for t in tokenizer.all_special_tokens if "pad" in t), None)
         assert pad_token is not None
         tokenizer.pad_token = pad_token
+        tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids(pad_token)
+        assert tokenizer.pad_token_id is not None
+
+        # Set image tokens -- used to create labels
+        image_tokens = [t for t in tokenizer.all_special_tokens if IMAGE_TOKEN_REGEX.search(t)]
+        tokenizer.image_tokens = image_tokens
+        tokenizer.image_token_ids = tokenizer.convert_tokens_to_ids(image_tokens)
         return tokenizer
 
-    tokenizer = setup_tokenizer(HF_MODEL_NAME, fixup_funcs=fixup_func)
-  
-    dataset = prepare_dataset(DATASET_NAME)
-    converted_dataset = [convert_to_conversation(sample) for sample in dataset]
-    image = dataset[2]["image"]
+    processor = Qwen2VLProcessor.from_pretrained(HF_MODEL_NAME)
 
-    peft_config = get_peft_config(**LORA_CONFIG)
+    tokenizer = setup_tokenizer(processor.tokenizer, fixup_funcs=fixup_func)
+    dataset = prepare_dataset(DATASET_NAME)
+    converted_dataset = [convert_to_hf_conversation(sample) for sample in dataset]
+    image = dataset[2]["image"]
+    test_batch = converted_dataset[:2]
+    collated_batch = collate_fn(processor, test_batch)
+
+    breakpoint()
+    decoded_text = tokenizer.decode(collated_batch["input_ids"][0], skip_special_tokens=False)
+    print(decoded_text)
+
+    #peft_config = get_peft_config(**LORA_CONFIG)
     #model = setup_model(HF_MODEL_NAME, quantize=True, dtype=DTYPE)
     # trainer = SFTTrainer(
     #     model=model,
