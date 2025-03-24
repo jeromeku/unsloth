@@ -10,6 +10,8 @@ from contextlib import contextmanager
 import torch
 from datasets import load_dataset
 from transformers import TextStreamer, Qwen2VLProcessor
+from transformers import AutoModelForVision2Seq
+from transformers.models.qwen2_vl import Qwen2VLModel
 from trl import SFTConfig, SFTTrainer
 from qwen_vl_utils import process_vision_info
 
@@ -19,7 +21,7 @@ import re
 from tests.utils import header_footer_context
 from tests.utils.hf_utils import get_peft_config, get_peft_model, setup_lora, setup_model, setup_tokenizer, setup_trainer
 
-BASE_MODEL_NAME = "Qwen2-VL-7B-Instruct"
+BASE_MODEL_NAME = "Qwen2-VL-2B-Instruct"
 UNSLOTH_MODEL_NAME = f"unsloth/{BASE_MODEL_NAME}"
 HF_MODEL_NAME = f"Qwen/{BASE_MODEL_NAME}"
 
@@ -102,7 +104,7 @@ def collate_fn(processor: Qwen2VLProcessor, examples):
 
     # Tokenize the texts and process the images
     batch = processor(text=texts, images=images, return_tensors="pt", padding=True)
-
+    print(f"DEBUG::batch.keys(): {batch['pixel_values'].shape} {batch['image_grid_thw'].shape}")
     # The labels are the input_ids, and we mask the padding tokens in the loss computation
     labels = batch["input_ids"].clone()
     labels[labels == processor.tokenizer.pad_token_id] = -100  #
@@ -138,13 +140,19 @@ if __name__ == "__main__":
     image = dataset[2]["image"]
     test_batch = converted_dataset[:2]
     collated_batch = collate_fn(processor, test_batch)
+    collated_batch = {k: v.to("cuda") for k, v in collated_batch.items()}
+    image_token = processor.image_token
+    image_token_id = processor.tokenizer.convert_tokens_to_ids(image_token)
+    for input_id in collated_batch["input_ids"]:
+        num_image_tokens = sum(1 for token in input_id if token == image_token_id)
+        print(f"DEBUG::num_image_tokens: {input_id.shape} {num_image_tokens}")
+    # decoded_text = tokenizer.decode(collated_batch["input_ids"][0], skip_special_tokens=False)
+    # print(decoded_text)
 
-    breakpoint()
-    decoded_text = tokenizer.decode(collated_batch["input_ids"][0], skip_special_tokens=False)
-    print(decoded_text)
-
-    #peft_config = get_peft_config(**LORA_CONFIG)
-    #model = setup_model(HF_MODEL_NAME, quantize=True, dtype=DTYPE)
+    peft_config = get_peft_config(**LORA_CONFIG)
+    model = setup_model(HF_MODEL_NAME, quantize=True, dtype=DTYPE, auto_model_class=AutoModelForVision2Seq)
+    output = model(**collated_batch)
+    print(output)
     # trainer = SFTTrainer(
     #     model=model,
     #     tokenizer=tokenizer,

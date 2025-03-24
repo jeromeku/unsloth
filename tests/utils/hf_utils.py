@@ -26,6 +26,7 @@ from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
     PretrainedConfig,
+    PreTrainedModel,
     PreTrainedTokenizer,
     PreTrainedTokenizerBase,
 )
@@ -153,6 +154,7 @@ def setup_model(
     dtype=torch.bfloat16,
     peft_config=None,
     autocast_adapter: bool = True,
+    auto_model_class: type[PreTrainedModel] = AutoModelForCausalLM,
 ):
     if quantize:
         bnb_config = BitsAndBytesConfig(
@@ -164,7 +166,7 @@ def setup_model(
     else:
         bnb_config = None
 
-    model = AutoModelForCausalLM.from_pretrained(
+    model = auto_model_class.from_pretrained(
         model_name,
         device_map="cuda:0",
         attn_implementation="sdpa",
