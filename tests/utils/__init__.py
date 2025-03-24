@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import time
 from contextlib import contextmanager
 
@@ -31,3 +32,67 @@ def header_footer_context(title: str, char="-"):
     yield
     print(f"{char}" * (100 + len(title) + 2))
     print()
+
+
+HF_TEST_MODELS = {
+    "llama-hf": "meta-llama/Llama-3.2-1B-Instruct",
+    "gemma-hf": "google/gemma-3-1b-it",
+    "qwen-hf": "Qwen/Qwen2-VL-2B-Instruct-bnb-4bit",
+}
+
+UNSLOTH_TEST_MODELS = {
+    "llama-unsloth": "unsloth/Llama-3.2-3B",
+    "gemma-unsloth": "unsloth/gemma-3-1b-it",
+    "qwen-unsloth": "unsloth/Qwen2-VL-2B-Instruct-bnb-4bit",
+}
+
+TEST_MODELS = {
+    **HF_TEST_MODELS,
+    **UNSLOTH_TEST_MODELS,
+}
+
+DEFAULT_TARGET_MODULES = [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj",
+]
+
+
+def get_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "model_name", type=str, choices=list(TEST_MODELS.keys())
+    )
+    parser.add_argument("--dtype", type=str, default="bfloat16")
+    parser.add_argument("--max_steps", type=int, default=100)
+    parser.add_argument("--max_seq_length", type=int, default=512)
+    parser.add_argument("--num_examples", type=int, default=None)
+    parser.add_argument("--lora_rank", type=int, default=64)
+    parser.add_argument("--output_dir", type=str, default="sft_test")
+    parser.add_argument(
+        "--merged_save_path", type=str, default="unsloth_merged_16bit"
+    )
+    parser.add_argument(
+        "--adapter_save_path", type=str, default="unsloth_saved_lora"
+    )
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--num_generations", type=int, default=5)
+    parser.add_argument("--num_train_epochs", type=int, default=1)
+    parser.add_argument(
+        "--gradient_checkpointing",
+        type=str,
+        choices=["True", "False", "unsloth"],
+        default="False",
+    )
+    parser.add_argument(
+        "--target_modules", nargs="+", type=str, default=DEFAULT_TARGET_MODULES
+    )
+    parser.add_argument("--temperature", type=float, default=0.8)
+    parser.add_argument("--max_new_tokens", type=int, default=20)
+    parser.add_argument("--verbose", type=bool, default=False)
+    return parser

@@ -126,10 +126,11 @@ def sample_responses(
     return responses
 
 
-def setup_tokenizer(model_name, fixup_funcs: list[Callable] = []):
+def setup_tokenizer(model_name, fixup_funcs: list[Callable] = None):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    for fixup_func in fixup_funcs:
-        tokenizer = fixup_func(tokenizer)
+    if fixup_funcs is not None:
+        for fixup_func in fixup_funcs:
+            tokenizer = fixup_func(tokenizer)
     return tokenizer
 
 
