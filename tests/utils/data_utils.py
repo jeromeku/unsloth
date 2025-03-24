@@ -144,11 +144,10 @@ def describe_peft_weights(model):
 
 def check_responses(responses: list[str], answer: str, prompt: str = None) -> bool:
     for i, response in enumerate(responses, start=1):
+        if prompt is not None:
+            response = response.replace(prompt, "")
+
         if answer in response:
-            print(f"\u2713 response {i} contains answer")
-            print(f" -> response: {response}")
+            print(f"\u2713 response {i} contains answer:\n{response}")
         else:
-            print(f"\u2717 response {i} does not contain answer")
-            if prompt is not None:
-                response = response.replace(prompt, "")
-            print(f" -> response: {response}")
+            print(f"\u2717 response {i} does not contain answer:\n{response}")
