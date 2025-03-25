@@ -94,5 +94,5 @@ def get_parser():
     )
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--max_new_tokens", type=int, default=20)
-    parser.add_argument("--verbose", type=bool, default=False)
+    parser.add_argument("--verbose", action="store_true", default=False)
     return parser

@@ -142,9 +142,13 @@ def main(args):
         check_responses(responses, answer=ANSWER, prompt=prompt)
 
     if args.verbose:
-        with header_footer_context("Peft Weights before training"):
-            for name, stats in itertools.islice(describe_peft_weights(model), 2):
-                print(f"{name}:\n{stats}")
+        for name, param in model.named_parameters():
+            if "lora_B" in name:
+                print(f"{name} - min: {param.min().item()}, max: {param.max().item()}, mean: {param.mean().item()}, std: {param.std().item()}")
+    import sys; sys.exit()
+        # with header_footer_context("Peft Weights before training"):
+        #     for name, stats in itertools.islice(describe_peft_weights(model), 2):
+        #         print(f"{name}:\n{stats}")
 
     output = trainer.train()
 
