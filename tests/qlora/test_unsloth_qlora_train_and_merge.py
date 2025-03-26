@@ -14,6 +14,8 @@
 
 # ruff: noqa
 import sys
+import os
+import shutil
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parents[2]
@@ -106,13 +108,21 @@ def main(args):
     lora_rank = args.lora_rank
     target_modules = args.target_modules
     
+    # Assume adapter name is "default"
+    DEFAULT_ADAPTER_NAME = "default"
+
     if len(target_modules) == 1 and target_modules[0] == "all-linear":
         target_modules = target_modules[0]
     
     # Save paths
-    unsloth_merged_path = args.merged_save_path
-    unsloth_adapter_path = args.adapter_save_path
     
+    unsloth_merged_path = os.path.join(args.merged_save_path, f"{model_name.replace('/', '_')}_lora_r{lora_rank}")
+    unsloth_adapter_path = os.path.join(args.adapter_save_path, f"{model_name.replace('/', '_')}_lora_r{lora_rank}")
+    if os.path.exists(unsloth_merged_path):
+        shutil.rmtree(unsloth_merged_path)
+    if os.path.exists(unsloth_adapter_path):
+        shutil.rmtree(unsloth_adapter_path)
+
     model, tokenizer = get_unsloth_model_and_tokenizer(
         model_name,
         max_seq_length=max_seq_length,
@@ -208,7 +218,7 @@ def main(args):
     print(f"Saving lora adapter to {unsloth_adapter_path}")
     model.save_pretrained(unsloth_adapter_path)
     tokenizer.save_pretrained(unsloth_adapter_path)
-    
+
     print(f"Saving merged model to {unsloth_merged_path}")
     model.save_pretrained_merged(
         unsloth_merged_path,

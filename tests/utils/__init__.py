@@ -61,7 +61,7 @@ DEFAULT_TARGET_MODULES = [
     "down_proj",
 ]
 
-
+DEFAULT_ADAPTER_NAME = "default"
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
