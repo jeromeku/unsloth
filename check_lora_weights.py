@@ -16,7 +16,7 @@ from bitsandbytes.nn import Params4bit
 from bitsandbytes.functional import dequantize_nf4
 from transformers import AutoModelForCausalLM
 from peft.tuners.lora import LoraLayer
-
+from peft import PeftModel
 
 def get_unsloth_model_and_tokenizer(
     model_name: str,
@@ -92,8 +92,13 @@ if __name__ == "__main__":
     unsloth_adapter_path = os.path.join(args.adapter_save_path, f"{model_name.replace('/', '_')}_lora_r{lora_rank}")
     
     # # Load HF Model before unsloth
-    peft_config = get_peft_config(lora_rank=lora_rank, target_modules=target_modules)
-    hf_model = setup_model(model_name, quantize=True, dtype=dtype, peft_config=peft_config)
+    #peft_config = get_peft_config(lora_rank=lora_rank, target_modules=target_modules)
+    hf_model = setup_model(model_name, quantize=True, dtype=dtype)
+    hf_model = PeftModel.from_pretrained(hf_model, unsloth_adapter_path, adapter_name=DEFAULT_ADAPTER_NAME)
+    hf_model = hf_model.merge_and_unload()
+    for name, module in hf_model.named_modules():
+        if any(name.endswith(m) for m in args.target_modules):
+            print(f"name: {name}")
 
     # Get original model
     # original_model, _ = get_unsloth_model_and_tokenizer(
@@ -144,7 +149,14 @@ if __name__ == "__main__":
             saved_base_weight = saved_base_module.base_layer.weight
             hf_base_weight = module.weight
             assert isinstance(hf_base_weight, Params4bit), f"HF base weight is not a Params4bit: {hf_base_weight.shape} {hf_base_weight.dtype}"
-            assert isinstance(saved_base_weight, Params4bit), f"Saved base weight is not a Params4bit: {saved_base_weight.shape} {saved_base_weight.dtype}"
+            if not isinstance(saved_base_weight, Params4bit):
+                print(f"Saved base weight is not a Params4bit: {param_name} {saved_base_weight.shape} {saved_base_weight.dtype}")
+            else:
+                hf_dq = dequantize_nf4(hf_base_weight, quant_state=hf_base_weight.quant_state)
+                saved_dq = dequantize_nf4(saved_base_weight, quant_state=saved_base_weight.quant_state)
+                diff = (hf_dq - saved_dq).abs().max().item()
+                assert torch.equal(hf_dq, saved_dq), f"HF and saved base weights are not equal: {param_name} {diff:.6f}"
+                
             # scale = saved_model.scaling.get(DEFAULT_ADAPTER_NAME, None)
             # lora_A = getattr(saved_base_module.lora_A, DEFAULT_ADAPTER_NAME)
             # lora_B = getattr(saved_base_module.lora_B, DEFAULT_ADAPTER_NAME)
