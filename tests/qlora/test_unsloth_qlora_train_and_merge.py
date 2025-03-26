@@ -205,12 +205,17 @@ def main(args):
     with header_footer_context("Responses after training"):
         check_responses(responses, answer=ANSWER, prompt=prompt)
 
-    # model.save_adapter(unsloth_adapter_path)
-    # model.save_pretrained_merged(
-    #     unsloth_merged_path,
-    #     tokenizer,
-    #     save_method="merged_16bit",
-    # )
+    print(f"Saving lora adapter to {unsloth_adapter_path}")
+    model.save_pretrained(unsloth_adapter_path)
+    tokenizer.save_pretrained(unsloth_adapter_path)
+    
+    print(f"Saving merged model to {unsloth_merged_path}")
+    model.save_pretrained_merged(
+        unsloth_merged_path,
+        tokenizer,
+        save_method="merged_16bit",
+    )
+
     # merged_model_unsloth, tokenizer = get_unsloth_model_and_tokenizer(
     #     unsloth_merged_path,
     #     max_seq_length=max_seq_length,
