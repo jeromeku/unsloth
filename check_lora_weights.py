@@ -120,11 +120,14 @@ def compare_merged_weights(
     ), f"{weight_name} merged weight check failed: {diff:.6f}"
 
 
-def merge_lora_module(module: torch.nn.Module, adapter_name: str = "default"):
+def merge_lora_module(module: torch.nn.Module, adapter_name: str = "default", impl: str = "peft"):
     """
     Merge adapter weights into the base weight.
 
     Returns the merged weight in float32.
+    `impl` can be "peft" or "unsloth"
+    if `peft`, then use peft merging calculation
+    if `unsloth`, then use unsloth merging calculation
     """
     scale = module.scaling.get(adapter_name, None)
     lora_A = getattr(module.lora_A, adapter_name)
@@ -134,12 +137,18 @@ def merge_lora_module(module: torch.nn.Module, adapter_name: str = "default"):
     dq = dequantize_nf4(
         module.base_layer.weight,
         quant_state=module.base_layer.weight.quant_state,
-    )
+    ).float()
 
-    # Merge scaled lora A and B
-    merged_weight = (
-        dq.float() + lora_B.weight.float() @ lora_A.weight.float() * scale
-    )
+    if impl == "peft":
+        merged_weight = (
+            dq + lora_B.weight.float() @ lora_A.weight.float() * scale
+        )
+    elif impl == "unsloth":
+        # Merge scaled lora A and B
+        merged_weight = torch.addmm(dq.t(), lora_A.weight.t(), lora_B.weight.t(), alpha=scale)
+        merged_weight = merged_weight.t()
+    else:
+        raise ValueError(f"Invalid implementation: {impl}")
 
     return merged_weight
 
@@ -257,10 +266,10 @@ if __name__ == "__main__":
                 # First, sanity check that merging saved unsloth lora adapters following peft logic results in the same weight as the merged and unloaded HF model
                 # Follow peft merging logic: dequantize base weight, merge lora A and B and scale, then requantize the merged weight (still in float32)
                 merged_hf_weight = merge_lora_module(
-                    hf_base_module, adapter_name=DEFAULT_ADAPTER_NAME
+                    hf_base_module, adapter_name=DEFAULT_ADAPTER_NAME, impl="peft"
                 )
                 merged_saved_weight = merge_lora_module(
-                    saved_base_module, adapter_name=DEFAULT_ADAPTER_NAME
+                    saved_base_module, adapter_name=DEFAULT_ADAPTER_NAME, impl="unsloth"
                 )
                 diff = (
                     (merged_hf_weight - merged_saved_weight).abs().max().item()
