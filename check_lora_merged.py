@@ -1,11 +1,13 @@
 # ruff: noqa
 
-import sys
-from pathlib import Path
+"""
+Check that the merged 16bit model (`save_pretrained_merged`) weights are correctly merged.
+- This is done by comparing the merged weights with the unmerged, saved LoRA weights (saved by calling either `save_pretrained` or `save_lora` after training).
+- The unmerged lora weights are manually merged in this script and compared with the saved merged weights.
+"""
+
 import os
 import argparse
-REPO_ROOT = Path(__file__).parents[2]
-sys.path.append(str(REPO_ROOT))
 
 import torch
 
@@ -81,13 +83,14 @@ def merge_lora_module(module: torch.nn.Module, module_name: str, adapter_name: s
     # lora_B is initialized to all zeros, should be non-zero after training
     assert not lora_B.weight.eq(0).all(), f"{module_name} check failed: Lora B for adapter {adapter_name} is all zeros"
 
-    # Dequantize base weight
+    # Dequantize base weight if needed
     if isinstance(module.base_layer.weight, Params4bit):
         dq = dequantize_nf4(
             module.base_layer.weight,
             quant_state=module.base_layer.weight.quant_state,
         ).float()
     else:
+        # Case when using unsloth dyanmic quantization, where not all target modules are quantized
         dq = module.base_layer.weight.float()
 
     # Merge scaled lora A and B
