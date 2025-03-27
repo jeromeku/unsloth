@@ -87,7 +87,7 @@ def merge_lora_module(module: torch.nn.Module, module_name: str, adapter_name: s
         if raise_on_lora_b_zero:
             raise AssertionError(msg)
         else:
-            print(f"WARNING!!: {msg}")
+            print(f"!!WARNING!! {msg}")
 
     # Dequantize base weight if needed
     if isinstance(module.base_layer.weight, Params4bit):

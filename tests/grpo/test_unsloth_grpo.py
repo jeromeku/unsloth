@@ -237,7 +237,7 @@ def main(args):
     # Configure save paths
     model_name = MODEL_CHOICES[args.model_name]
     model_name_parts = model_name.split("/")
-    model_save_dir = "_".join(model_name_parts)
+    model_save_dir = "_".join([n.lower() for n in model_name_parts])
     lora_adapter_only_save_path = (
         args.lora_adapter_only_save_path
         or f"{model_save_dir}/lora_adapter_only"
@@ -325,53 +325,61 @@ def main(args):
     with delimiter_context("Training"):
         trainer.train()
 
-    with delimiter_context("Model reasoning after training", delimiter="*"):
-        text = tokenizer.apply_chat_template(
-            [
-                {"role": "user", "content": "Calculate pi."},
-            ],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
 
-        sampling_params = SamplingParams(
-            temperature=0.8,
-            top_p=0.95,
-            max_tokens=1024,
-        )
-        
-        print(f"Prompt:\n{text}")
-        print(f"Sampling params:\n{sampling_params}")
-        
-        with delimiter_context("Without LoRA", delimiter="-", width=50):
-        
-            output = (
-                model.fast_generate(
-                    [text],
-                    sampling_params=sampling_params,
-                    lora_request=None,
-                )[0]
-                .outputs[0]
-                .text
-            )
-        
-            print(f"\nModel response without LoRA:\n{output}")
-
-        with delimiter_context("With LoRA", delimiter="-", width=50):
-            print(f"Saving LoRA adapter only to {lora_adapter_only_save_path}\n")
-            model.save_lora(lora_adapter_only_save_path)
-
-            output = (
-                model.fast_generate(
-                    text,
-                    sampling_params=sampling_params,
-                    lora_request=model.load_lora(lora_adapter_only_save_path),
-                )[0]
-                .outputs[0]
-                .text
+    with delimiter_context("Checking lora weights"):
+        for name, param in model.named_parameters():
+            if "lora_B" in name:
+                if param.eq(0).all():
+                    print(f"!!WARNING!! {name} is all zeros!  This indicates that the LoRA weights were not trained!")
+                    
+    if fast_inference:
+        with delimiter_context("Model reasoning after training", delimiter="*"):
+            text = tokenizer.apply_chat_template(
+                [
+                    {"role": "user", "content": "Calculate pi."},
+                ],
+                tokenize=False,
+                add_generation_prompt=True,
             )
 
-            print(f"\nModel response with LoRA:\n{output}")
+            sampling_params = SamplingParams(
+                temperature=0.8,
+                top_p=0.95,
+                max_tokens=1024,
+            )
+            
+            print(f"Prompt:\n{text}")
+            print(f"Sampling params:\n{sampling_params}")
+            
+            with delimiter_context("Without LoRA", delimiter="-", width=50):
+            
+                output = (
+                    model.fast_generate(
+                        [text],
+                        sampling_params=sampling_params,
+                        lora_request=None,
+                    )[0]
+                    .outputs[0]
+                    .text
+                )
+            
+                print(f"\nModel response without LoRA:\n{output}")
+
+            with delimiter_context("With LoRA", delimiter="-", width=50):
+                print(f"Saving LoRA adapter only to {lora_adapter_only_save_path}\n")
+                model.save_lora(lora_adapter_only_save_path)
+
+                output = (
+                    model.fast_generate(
+                        text,
+                        sampling_params=sampling_params,
+                        lora_request=model.load_lora(lora_adapter_only_save_path),
+                    )[0]
+                    .outputs[0]
+                    .text
+                )
+
+                print(f"\nModel response with LoRA:\n{output}")
 
     print(f"Saving merged model to {model_merged_save_path}")
     model.save_pretrained_merged(
@@ -386,7 +394,6 @@ def main(args):
         tokenizer,
         save_method="lora",
     )
-
 
 # Model args
 if __name__ == "__main__":
