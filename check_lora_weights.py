@@ -217,12 +217,12 @@ if __name__ == "__main__":
                 compare_merged_weights(merged_module.weight, merged_hf_weight)
                 print("passed!")
                 
-                import sys; sys.exit()
-                # Check that the dequantized merged weight is the same as the hf_dq, which is the dequantized peft merged weight
-                dq_merged_weight = dequantize_nf4(quantized_merged_weight, quant_state=quant_state)
-                diff = (dq_merged_weight - hf_dq).abs().max().item()
-                print(f"diff, merged: {diff:.6f}")
-                import sys; sys.exit()
+                # import sys; sys.exit()
+                # # Check that the dequantized merged weight is the same as the hf_dq, which is the dequantized peft merged weight
+                # dq_merged_weight = dequantize_nf4(quantized_merged_weight, quant_state=quant_state)
+                # diff = (dq_merged_weight - hf_dq).abs().max().item()
+                # print(f"diff, merged: {diff:.6f}")
+                # import sys; sys.exit()
             # merged_weight_fp32 = base_weight.float() + scale * lora_B.weight.float() @ lora_A.weight.float()
             # merged_weight = merged_weight_fp32.to(original_dtype)
 
