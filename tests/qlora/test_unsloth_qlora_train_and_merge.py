@@ -27,7 +27,7 @@ from unsloth import FastLanguageModel
 import torch
 from datasets import Dataset
 from trl import SFTConfig
-from tests.utils import header_footer_context, TEST_MODELS, get_parser
+from tests.utils import header_footer_context, TEST_MODELS, get_parser, DEFAULT_SAVE_PATH
 from tests.utils.data_utils import (
     DEFAULT_MESSAGES,
     USER_MESSAGE,
@@ -40,7 +40,6 @@ from tests.utils.hf_utils import (
     sample_responses,
     setup_trainer,
 )
-import argparse
 
 
 def get_unsloth_model_and_tokenizer(
@@ -87,7 +86,7 @@ def main(args):
     # Training args
     seed = args.seed
     batch_size = args.batch_size
-    max_steps = args.max_steps   
+    max_steps = args.max_steps
     max_seq_length = args.max_seq_length
     num_examples = args.num_examples or args.max_steps * batch_size
     if args.gradient_checkpointing == "True":
@@ -98,8 +97,9 @@ def main(args):
         gradient_checkpointing = "unsloth"
 
     num_train_epochs = args.num_train_epochs
-    
+
     # Generation args
+    fast_inference = args.use_vllm
     num_generations = args.num_generations
     temperature = args.temperature
     max_new_tokens = args.max_new_tokens
@@ -107,17 +107,23 @@ def main(args):
     # PEFT args
     lora_rank = args.lora_rank
     target_modules = args.target_modules
-    
-    # Assume adapter name is "default"
-    DEFAULT_ADAPTER_NAME = "default"
 
     if len(target_modules) == 1 and target_modules[0] == "all-linear":
         target_modules = target_modules[0]
-    
+
     # Save paths
-    
-    unsloth_merged_path = os.path.join(args.merged_save_path, f"{model_name.replace('/', '_')}_lora_r{lora_rank}")
-    unsloth_adapter_path = os.path.join(args.adapter_save_path, f"{model_name.replace('/', '_')}_lora_r{lora_rank}")
+
+    sub_dir = (
+        model_name.replace("/", "_") + f"_lora_r{lora_rank}_{fast_inference=}"
+    )
+    unsloth_merged_path = args.merged_save_path or os.path.join(
+        DEFAULT_SAVE_PATH, sub_dir, "merged"
+    )
+    unsloth_adapter_path = args.adapter_save_path or os.path.join(
+        DEFAULT_SAVE_PATH,
+        sub_dir,
+        "adapter",
+    )
     if os.path.exists(unsloth_merged_path):
         shutil.rmtree(unsloth_merged_path)
     if os.path.exists(unsloth_adapter_path):
@@ -127,7 +133,7 @@ def main(args):
         model_name,
         max_seq_length=max_seq_length,
         load_in_4bit=True,
-        fast_inference=False,
+        fast_inference=fast_inference,
         max_lora_rank=lora_rank,
         dtype=dtype,
     )
@@ -189,17 +195,21 @@ def main(args):
     )
     with header_footer_context("Responses before training"):
         check_responses(responses, answer=ANSWER, prompt=prompt)
-    
+
     if args.verbose:
         with header_footer_context("Peft Weights before training"):
-            for name, stats in itertools.islice(describe_peft_weights(model), 2):
+            for name, stats in itertools.islice(
+                describe_peft_weights(model), 2
+            ):
                 print(f"{name}:\n{stats}")
 
     output = trainer.train()
-    
+
     if args.verbose:
         with header_footer_context("Peft Weights after training"):
-            for name, stats in itertools.islice(describe_peft_weights(model), 2):
+            for name, stats in itertools.islice(
+                describe_peft_weights(model), 2
+            ):
                 print(f"{name}:\n{stats}")
 
     if args.verbose:
@@ -242,8 +252,8 @@ def main(args):
     # with header_footer_context("Responses after unsloth merge to 16bit"):
     #     check_responses(responses, answer=ANSWER, prompt=prompt)
 
+
 if __name__ == "__main__":
     parser = get_parser()
     args = parser.parse_args()
     main(args)
-

@@ -62,6 +62,7 @@ DEFAULT_TARGET_MODULES = [
 ]
 
 DEFAULT_ADAPTER_NAME = "default"
+DEFAULT_SAVE_PATH = "unsloth_outputs"
 
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -75,10 +76,10 @@ def get_parser():
     parser.add_argument("--lora_rank", type=int, default=64)
     parser.add_argument("--output_dir", type=str, default="sft_test")
     parser.add_argument(
-        "--merged_save_path", type=str, default="unsloth_merged_16bit"
+        "--merged_save_path", type=str, default=None
     )
     parser.add_argument(
-        "--adapter_save_path", type=str, default="unsloth_saved_lora"
+        "--adapter_save_path", type=str, default=None
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch_size", type=int, default=4)
@@ -95,5 +96,6 @@ def get_parser():
     )
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--max_new_tokens", type=int, default=20)
+    parser.add_argument("--use_vllm", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
     return parser
