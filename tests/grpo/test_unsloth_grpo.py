@@ -1,5 +1,7 @@
 # ruff: noqa
 
+import os
+import shutil
 from unsloth import FastLanguageModel
 from contextlib import contextmanager
 import re
@@ -245,6 +247,14 @@ def main(args):
     )
     model_lora_save_path = args.model_lora_save_path or f"{model_save_dir}/model/lora"
 
+    # Clean up save paths
+    if os.path.exists(lora_adapter_only_save_path):
+        shutil.rmtree(lora_adapter_only_save_path)
+    if os.path.exists(model_merged_save_path):
+        shutil.rmtree(model_merged_save_path)
+    if os.path.exists(model_lora_save_path):
+        shutil.rmtree(model_lora_save_path)
+
     # Load model and tokenizer
     model, tokenizer = get_unsloth_model_and_tokenizer(
         model_name=model_name,
@@ -345,10 +355,10 @@ def main(args):
                 .text
             )
         
-            print(f"Model response without LoRA:\n{output}")
+            print(f"\nModel response without LoRA:\n{output}")
 
         with delimiter_context("With LoRA", delimiter="-", width=50):
-            print(f"Saving LoRA adapter only to {lora_adapter_only_save_path}")
+            print(f"Saving LoRA adapter only to {lora_adapter_only_save_path}\n")
             model.save_lora(lora_adapter_only_save_path)
 
             output = (
@@ -361,21 +371,21 @@ def main(args):
                 .text
             )
 
-            print(f"Model response with LoRA:\n{output}")
+            print(f"\nModel response with LoRA:\n{output}")
 
-    # print(f"Saving merged model to {model_merged_save_path}")
-    # model.save_pretrained_merged(
-    #     model_merged_save_path,
-    #     tokenizer,
-    #     save_method="merged_16bit",
-    # )
+    print(f"Saving merged model to {model_merged_save_path}")
+    model.save_pretrained_merged(
+        model_merged_save_path,
+        tokenizer,
+        save_method="merged_16bit",
+    )
 
-    # print(f"Saving LoRA model to {model_lora_save_path}")
-    # model.save_pretrained_merged(
-    #     model_lora_save_path,
-    #     tokenizer,
-    #     save_method="lora",
-    # )
+    print(f"Saving LoRA model to {model_lora_save_path}")
+    model.save_pretrained_merged(
+        model_lora_save_path,
+        tokenizer,
+        save_method="lora",
+    )
 
 
 # Model args
