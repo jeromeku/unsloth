@@ -206,6 +206,8 @@ if __name__ == "__main__":
                 #     else:
                 #         if not v == hf_base_weight.quant_state.as_dict()[k]:    
                 #             print(f"{k}: {v} != {hf_base_weight.quant_state.as_dict()[k]}")
+                # NOTE: `merge_and_unload` does NOT cast float merged weight to original dtype before requantizing
+                # E.g., if original dtype was bfloat16, the requantized merged weight will be requantized as float32 (dtype after merging) and NOT as bfloat16
                 dq_merged_weight = dequantize_nf4(merged_module.weight, quant_state=merged_module.weight.quant_state)
                 requantized_merged_weight = Params4bit(merged_hf_weight.to("cpu"), quant_type="nf4", compress_statistics=True).cuda()
                 requantized_quant_state = requantized_merged_weight.quant_state.as_dict()
