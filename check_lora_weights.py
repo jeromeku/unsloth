@@ -143,6 +143,11 @@ def merge_lora_module(module: torch.nn.Module, adapter_name: str = "default"):
 
     return merged_weight
 
+def check_unsloth_merged_weight(unsloth_merged_weight: torch.Tensor, merged_saved_weight: torch.Tensor, weight_name: str):
+    assert unsloth_merged_weight.dtype == merged_saved_weight.dtype, f"{weight_name} dtype mismatch: {unsloth_merged_weight.dtype} != {merged_saved_weight.dtype}"
+    assert unsloth_merged_weight.shape == merged_saved_weight.shape, f"{weight_name} shape mismatch: {unsloth_merged_weight.shape} != {merged_saved_weight.shape}" 
+    diff = (unsloth_merged_weight - merged_saved_weight).abs().max().item()
+    assert torch.allclose(unsloth_merged_weight, merged_saved_weight), f"{weight_name} unsloth merged weight check failed: {diff:.6f}"
 
 if __name__ == "__main__":
     args = get_parser().parse_args()
@@ -248,6 +253,7 @@ if __name__ == "__main__":
                     f"Saved base weight is not a Params4bit: {fqn} {saved_base_weight.shape} {saved_base_weight.dtype}"
                 )
             else:
+
                 # First, sanity check that merging saved unsloth lora adapters following peft logic results in the same weight as the merged and unloaded HF model
                 # Follow peft merging logic: dequantize base weight, merge lora A and B and scale, then requantize the merged weight (still in float32)
                 merged_hf_weight = merge_lora_module(
@@ -260,18 +266,14 @@ if __name__ == "__main__":
                     (merged_hf_weight - merged_saved_weight).abs().max().item()
                 )
 
-                #print(
-                #    f"Checking manually merged hf weight and saved unsloth lora merge for {fqn}...",
-                #    end="",
-                #    flush=True,
-                #)
                 if not torch.allclose(merged_hf_weight, merged_saved_weight):
                     print(
                         f"{fqn}: save lora merge not close to hf manual merge: {diff:.6f}"
                     )
                     assert False
-                #print("passed!")
 
+                # Next check that the manually merged HF weight matches merge_and_unload weight
+                # checks both quant_state and merged weight
                 compare_merged_weights(merged_module.weight, merged_hf_weight, weight_name=fqn)
 
                 # Now try to reproduce `save_pretrained_merged` weights
@@ -279,6 +281,9 @@ if __name__ == "__main__":
                 original_dtype = saved_base_weight.quant_state.dtype
                 unsloth_merged_module = unsloth_merged_model.get_submodule(fqn)
                 unsloth_merged_weight = unsloth_merged_module.weight
-                assert original_dtype == unsloth_merged_weight.dtype, (
-                    f"{name} dtype mismatch: {original_dtype} != {unsloth_merged_weight.dtype}"
-                )
+
+                # Convert to original dtype
+                merged_saved_weight = merged_saved_weight.to(original_dtype)
+
+                # Check that the unsloth merged weight matches the saved merged weight
+                check_unsloth_merged_weight(unsloth_merged_weight, merged_saved_weight, weight_name=fqn)
