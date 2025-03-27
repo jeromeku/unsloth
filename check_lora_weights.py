@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 import os
+import copy
 REPO_ROOT = Path(__file__).parents[2]
 sys.path.append(str(REPO_ROOT))
 
@@ -15,8 +16,10 @@ from peft.tuners.lora import LoraLayer
 from bitsandbytes.nn import Params4bit
 from bitsandbytes.functional import dequantize_nf4
 from transformers import AutoModelForCausalLM
-from peft.tuners.lora import LoraLayer
+from peft.tuners.lora.layer import LoraLayer
+from peft.tuners.lora.bnb import Linear4bit
 from peft import PeftModel
+from bitsandbytes.functional import quantize_nf4
 
 def get_unsloth_model_and_tokenizer(
     model_name: str,
@@ -90,16 +93,23 @@ if __name__ == "__main__":
     # Save paths
     unsloth_merged_path = os.path.join(args.merged_save_path, f"{model_name.replace('/', '_')}_lora_r{lora_rank}")
     unsloth_adapter_path = os.path.join(args.adapter_save_path, f"{model_name.replace('/', '_')}_lora_r{lora_rank}")
-    
+    assert os.path.exists(unsloth_adapter_path), f"Unsloth adapter path does not exist: {unsloth_adapter_path}"
+    assert os.path.exists(unsloth_merged_path), f"Unsloth merged path does not exist: {unsloth_merged_path}"
+
     # # Load HF Model before unsloth
     #peft_config = get_peft_config(lora_rank=lora_rank, target_modules=target_modules)
     hf_model = setup_model(model_name, quantize=True, dtype=dtype)
     hf_model = PeftModel.from_pretrained(hf_model, unsloth_adapter_path, adapter_name=DEFAULT_ADAPTER_NAME)
-    hf_model = hf_model.merge_and_unload()
+    hf_model_merged = copy.deepcopy(hf_model)
+    hf_model_merged = hf_model_merged.merge_and_unload()
     for name, module in hf_model.named_modules():
         if any(name.endswith(m) for m in args.target_modules):
             print(f"name: {name}")
-
+            break
+    for name, module in hf_model_merged.named_modules():
+        if any(name.endswith(m) for m in args.target_modules):
+            print(f"name: {name}")
+            break
     # Get original model
     # original_model, _ = get_unsloth_model_and_tokenizer(
     #     model_name,
@@ -135,40 +145,95 @@ if __name__ == "__main__":
     # with header_footer_context("Merged model"):
     #     print(merged_model)
  
-    with header_footer_context("Saved model"):
-        print(saved_model)
+    # with header_footer_context("Saved model"):
+    #     print(saved_model)
 
+    PEFT_PREFIX = "base_model.model"
     error_params = []
     #for name, module in saved_model.named_modules():
     for name, module in hf_model.named_modules():
         if any(name.endswith(m) for m in args.target_modules):
+            print(f"name: {name}")
+            break
+    for name, module in saved_model.named_modules():
+        if any(name.endswith(m) for m in args.target_modules):
+            print(f"name: {name}")
+            break
+    
+    for name, merged_module in hf_model_merged.named_modules():
+        if any(name.endswith(m) for m in args.target_modules):
             # Extract base weight
             print(f"name: {name}")
-            param_name = f"{name}.base_layer.weight"
-            saved_base_module = saved_model.get_submodule(name)
+
+            # Get the full qualified name
+            fqn = f"{PEFT_PREFIX}.{name}"
+            hf_base_module = hf_model.get_submodule(fqn)
+            hf_base_weight = hf_base_module.base_layer.weight
+           
+            saved_base_module = saved_model.get_submodule(fqn)
             saved_base_weight = saved_base_module.base_layer.weight
-            hf_base_weight = module.weight
-            assert isinstance(hf_base_weight, Params4bit), f"HF base weight is not a Params4bit: {hf_base_weight.shape} {hf_base_weight.dtype}"
+#            print(f"hf_base_weight: {hf_base_weight.shape} {hf_base_weight.dtype} {saved_base_weight.shape} {saved_base_weight.dtype}")
+            assert not hasattr(merged_module, "lora_A"), f"HF model {name} has lora_A"
+            assert not hasattr(merged_module, "lora_B"), f"HF model {name} has lora_B"
+
             if not isinstance(saved_base_weight, Params4bit):
-                print(f"Saved base weight is not a Params4bit: {param_name} {saved_base_weight.shape} {saved_base_weight.dtype}")
+                print(f"Saved base weight is not a Params4bit: {fqn} {saved_base_weight.shape} {saved_base_weight.dtype}")
             else:
+                # hf_dq = dequantize_nf4(hf_base_weight, quant_state=hf_base_weight.quant_state)
+                # saved_dq = dequantize_nf4(saved_base_weight, quant_state=saved_base_weight.quant_state)
+                # diff = (hf_dq - saved_dq).abs().max().item()
+                # print(f"diff, no merge: {diff:.6f}")
+
+                # Follow peft merging logic: dequantize base weight, merge lora A and B and scale, then requantize the merged weight
+                hf_scale = hf_base_module.scaling.get(DEFAULT_ADAPTER_NAME, None)
+                saved_scale = saved_base_module.scaling.get(DEFAULT_ADAPTER_NAME, None)
+                hf_lora_A = getattr(hf_base_module.lora_A, DEFAULT_ADAPTER_NAME)
+                saved_lora_A = getattr(saved_base_module.lora_A, DEFAULT_ADAPTER_NAME)
+                hf_lora_B = getattr(hf_base_module.lora_B, DEFAULT_ADAPTER_NAME)
+                saved_lora_B = getattr(saved_base_module.lora_B, DEFAULT_ADAPTER_NAME)
+                print(f"hf_scale: {hf_scale} saved_scale: {saved_scale} hf_lora_A: {hf_lora_A.weight.shape} {hf_lora_A.weight.dtype} saved_lora_A: {saved_lora_A.weight.shape} {saved_lora_A.weight.dtype} hf_lora_B: {hf_lora_B.weight.shape} {hf_lora_B.weight.dtype} saved_lora_B: {saved_lora_B.weight.shape} {saved_lora_B.weight.dtype}")
+
                 hf_dq = dequantize_nf4(hf_base_weight, quant_state=hf_base_weight.quant_state)
                 saved_dq = dequantize_nf4(saved_base_weight, quant_state=saved_base_weight.quant_state)
-                diff = (hf_dq - saved_dq).abs().max().item()
-                assert torch.equal(hf_dq, saved_dq), f"HF and saved base weights are not equal: {param_name} {diff:.6f}"
+                merged_hf_weight = hf_dq.float() + hf_lora_B.weight.float() @ hf_lora_A.weight.float() * hf_scale
+                merged_saved_weight = saved_dq.float() + saved_lora_B.weight.float() @ saved_lora_A.weight.float() * saved_scale
+                diff = (merged_hf_weight - merged_saved_weight).abs().max().item()
+                print(f"diff, hf manual merge vs saved: {diff:.6f}")
+
+                # for k,v in merged_module.weight.quant_state.as_dict().items():
+                #     if isinstance(v, torch.Tensor):
+                #         print(f"{k}: {torch.allclose(v, hf_base_weight.quant_state.as_dict()[k])}")
+                #     else:
+                #         if not v == hf_base_weight.quant_state.as_dict()[k]:    
+                #             print(f"{k}: {v} != {hf_base_weight.quant_state.as_dict()[k]}")
+                dq_merged_weight = dequantize_nf4(merged_module.weight, quant_state=merged_module.weight.quant_state)
+                requantized_merged_weight = Params4bit(merged_hf_weight.to("cpu"), quant_type="nf4", compress_statistics=True).cuda()
+                requantized_quant_state = requantized_merged_weight.quant_state.as_dict()
+                for k,v in merged_module.weight.quant_state.as_dict().items():
+                    if isinstance(v, torch.Tensor):
+                        print(f"{k}: {torch.allclose(v, requantized_quant_state[k])}")
+                    else:
+                        if not v == requantized_quant_state[k]:    
+                            print(f"{k}: {v} != {requantized_quant_state[k]}")
                 
-            # scale = saved_model.scaling.get(DEFAULT_ADAPTER_NAME, None)
-            # lora_A = getattr(saved_base_module.lora_A, DEFAULT_ADAPTER_NAME)
-            # lora_B = getattr(saved_base_module.lora_B, DEFAULT_ADAPTER_NAME)
-           
+                dequantized_requantized_merged_weight = dequantize_nf4(requantized_merged_weight, quant_state=requantized_merged_weight.quant_state)
+                diff = (dequantized_requantized_merged_weight - dq_merged_weight).abs().max().item()
+                print(f"diff, hf manual merge vs merge_and_unload: {diff:.6f}")
+                import sys; sys.exit()
+                # Check that the dequantized merged weight is the same as the hf_dq, which is the dequantized peft merged weight
+                dq_merged_weight = dequantize_nf4(quantized_merged_weight, quant_state=quant_state)
+                diff = (dq_merged_weight - hf_dq).abs().max().item()
+                print(f"diff, merged: {diff:.6f}")
+                import sys; sys.exit()
+            # merged_weight_fp32 = base_weight.float() + scale * lora_B.weight.float() @ lora_A.weight.float()
+            # merged_weight = merged_weight_fp32.to(original_dtype)
+
             #param_name = f"{name}.base_layer.weight"
           #  print(f"{name}: scale: {scale} lora_A: {lora_A.weight.shape} {lora_A.weight.dtype} lora_B: {lora_B.weight.shape} {lora_B.weight.dtype}")
             
             # original_dtype = base_weight.dtype
             # if isinstance(base_weight, Params4bit):
             #     base_weight = dequantize_nf4(base_weight, quant_state=base_weight.quant_state)
-            # merged_weight_fp32 = base_weight.float() + scale * lora_B.weight.float() @ lora_A.weight.float()
-            # merged_weight = merged_weight_fp32.to(original_dtype)
             # diff = (merged_weight - merged_param).abs().max().item()
             # print(f" -> {param_name}: {diff:.6f}")
 
