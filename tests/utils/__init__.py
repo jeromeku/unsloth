@@ -41,7 +41,8 @@ HF_TEST_MODELS = {
 }
 
 UNSLOTH_TEST_MODELS = {
-    "llama-unsloth": "unsloth/Llama-3.2-1B-Instruct",
+    "llama-unsloth-1b": "unsloth/Llama-3.2-1B-Instruct",
+    "llama-unsloth-3b": "unsloth/Llama-3.2-3B-Instruct",
     "gemma-unsloth": "unsloth/gemma-3-1b-it",
     "qwen-unsloth": "unsloth/Qwen2-VL-2B-Instruct-bnb-4bit",
 }
