@@ -25,6 +25,9 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    TrainerCallback,
+    TrainerControl,
+    TrainerState,
 )
 from transformers.trainer_callback import (
     TrainerCallback,
@@ -35,37 +38,23 @@ from transformers.trainer_callback import (
 from trl import SFTTrainer
 
 
-class PeftWeightCallback(TrainerCallback):
-    def on_log(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        logs,
-        **kwargs,
-    ):
-        print(f"DEBUG::CALLBACK::on_log::{state.log_history}")
+class PeftStatsCallback(TrainerCallback):
+    def __init__(self, lora_params=["lora_B"], step_interval=10):
+        self.lora_params = lora_params
+        self.step_interval = step_interval
 
-    def on_train_begin(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        **kwargs,
-    ):
-        model = kwargs.get("model")
-        assert model is not None
-        print(f"DEBUG::CALLBACK::on_train_begin::{kwargs.keys()}")
-
-    def on_step_end(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        **kwargs,
-    ):
-        print(f"DEBUG::CALLBACK::on_step_end::{state.global_step}")
-
+    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        if state.global_step % self.step_interval == 0:
+            model = kwargs["model"]
+            named_params = {n: p for n, p in model.named_parameters() if any(s in n for s in self.lora_params)}
+            
+            for name, param in named_params.items():
+                print(f"Step {state.global_step}:")
+                print(f"Parameter: {name}")
+                print(f"  Min: {param.min().item():.4f}")
+                print(f"  Max: {param.max().item():.4f}")
+                print(f"  Mean: {param.mean().item():.4f}")
+                print(f"  Std: {param.std().item():.4f}")
 
 @torch.inference_mode()
 def generate_responses(
