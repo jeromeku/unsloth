@@ -41,7 +41,7 @@ HF_TEST_MODELS = {
 }
 
 UNSLOTH_TEST_MODELS = {
-    "llama-unsloth": "unsloth/Llama-3.2-3B",
+    "llama-unsloth": "unsloth/Llama-3.2-1B-Instruct",
     "gemma-unsloth": "unsloth/gemma-3-1b-it",
     "qwen-unsloth": "unsloth/Qwen2-VL-2B-Instruct-bnb-4bit",
 }
@@ -62,6 +62,7 @@ DEFAULT_TARGET_MODULES = [
 ]
 
 DEFAULT_ADAPTER_NAME = "default"
+
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
