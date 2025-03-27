@@ -47,7 +47,13 @@ if __name__ == "__main__":
 
     print("Checking lora adapter and model LoRA saved state dicts...")
     for k, v in model_lora_state_dict.items():
+        # Perform 2 checks
+        # 1. Check if the values are close
         if not torch.allclose(v, model_lora_state_dict[k]):
             diff = (v - model_lora_state_dict[k]).abs().max()
-            print(f" ! {k} diff: {diff}")
+            raise AssertionError(f"{k} diff: {diff}")
+        # 2. Sanity check that lora_B is not all zeros
+        if "lora_B" in k:
+            assert not v.eq(0).all(), f"{k} is all zeros!"
+    
     print("Passed!")

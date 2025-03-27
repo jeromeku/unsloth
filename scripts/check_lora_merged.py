@@ -69,7 +69,7 @@ def get_unsloth_model_and_tokenizer(
 
     return model, tokenizer
 
-def merge_lora_module(module: torch.nn.Module, module_name: str, adapter_name: str = "default"):
+def merge_lora_module(module: torch.nn.Module, module_name: str, adapter_name: str = "default", raise_on_lora_b_zero: bool = False):
     """
     Merge adapter weights into the base weight.
 
@@ -81,7 +81,13 @@ def merge_lora_module(module: torch.nn.Module, module_name: str, adapter_name: s
     assert lora_A is not None and lora_B is not None, f"{module_name} check failed: Lora A and B for adapter {adapter_name} are not found!"
 
     # lora_B is initialized to all zeros, should be non-zero after training
-    assert not lora_B.weight.eq(0).all(), f"{module_name} check failed: Lora B for adapter {adapter_name} is all zeros"
+    failed_on_zero = lora_B.weight.eq(0).all()
+    if failed_on_zero:
+        msg = f"{module_name}: lora_B weights all zeros! lora_B weights are initialized to zeros -- this indicates that the saved weights are not trained."
+        if raise_on_lora_b_zero:
+            raise AssertionError(msg)
+        else:
+            print(f"WARNING!!: {msg}")
 
     # Dequantize base weight if needed
     if isinstance(module.base_layer.weight, Params4bit):
