@@ -20,6 +20,8 @@ import argparse
 
 # Model utils
 MODEL_CHOICES = {
+    "llama-meta-3.2-1b": "meta-llama/Llama-3.2-1B-Instruct",
+    "llama-meta-3.2-3b": "meta-llama/Llama-3.2-3B-Instruct",
     "llama-unsloth-3.2-1b": "unsloth/Llama-3.2-1B-Instruct",
     "llama-unsloth-3.2-3b": "unsloth/Llama-3.2-3B-Instruct",
     "llama-meta-3.1-8b": "meta-llama/Llama-3.1-8B-Instruct",
@@ -331,7 +333,7 @@ def main(args):
             if "lora_B" in name:
                 if param.eq(0).all():
                     print(f"!!WARNING!! {name} is all zeros!  This indicates that the LoRA weights were not trained!")
-                    
+
     if fast_inference:
         with delimiter_context("Model reasoning after training", delimiter="*"):
             text = tokenizer.apply_chat_template(
