@@ -10,23 +10,26 @@ from utils.model_registry import (
 
 
 def test_model_uploaded(model_ids: list[str]):
+    missing_models = []
     for _id in model_ids:
         
         model_info: HfModelInfo = get_model_info(_id, properties=['safetensors', 'lastModified'])
         if not model_info:
-            print(f"{_id} not found")
+            missing_models.append(_id)
+    
+    return missing_models
 
 if __name__ == "__main__":
-    test_model_method = get_qwen_vl_models
 
-    models = test_model_method()
-    print(f"Models registered: {len(models)}")
-    for model_info in models.values():
-        print(f"  {model_info.model_path}")
-    test_model_uploaded(list(models.keys()))
-    # test_model_uploaded(list(llama_models.keys()))
-    # quant_type = None
-    # version = "3.2"
-    # for model_info in llama_models.values():
-    #     if model_info.version == version and model_info.quant_type == quant_type:
-    #         print(f"{model_info}")
+    for method in [get_llama_models, get_qwen_models, get_qwen_vl_models]:
+        
+        models = method()
+        print(f"Models registered: {len(models)}")
+        for model_info in models.values():
+            print(f"  {model_info.model_path}")
+        missing_modes = test_model_uploaded(list(models.keys()))
+    
+        if missing_modes:
+            print("--------------------------------")
+            print(f"Missing models: {missing_modes}")
+            print("--------------------------------")

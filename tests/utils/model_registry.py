@@ -6,6 +6,7 @@ UNSLOTH_DYNAMIC_QUANT_TAG = "unsloth" + "-" + BNB_QUANTIZED_TAG
 INSTRUCT_TAG = "Instruct"
 
 _IS_LLAMA_REGISTERED = False
+_IS_LLAMA_VISION_REGISTERED = False
 _IS_QWEN_REGISTERED = False
 _IS_GEMMA_REGISTERED = False
 _IS_QWEN_VL_REGISTERED = False
@@ -68,12 +69,22 @@ class ModelInfo:
         return f"{self.org}/{self.name}"
 
 class LlamaModelInfo(ModelInfo):
+    @classmethod
     def construct_model_name(cls, base_name, version, size, quant_type, instruct_tag):
         key = f"{base_name}-{version}-{size}B"
         key = cls.append_instruct_tag(key, instruct_tag)
         key = cls.append_quant_type(key, quant_type)
         return key
 
+
+class LlamaVisionModelInfo(ModelInfo):
+    @classmethod
+    def construct_model_name(cls, base_name, version, size, quant_type, instruct_tag):
+        key = f"{base_name}-{version}-{size}B-Vision"
+        key = cls.append_instruct_tag(key, instruct_tag)
+        key = cls.append_quant_type(key, quant_type)
+        return key
+    
 class QwenModelInfo(ModelInfo):
     @classmethod
     def construct_model_name(cls, base_name, version, size, quant_type, instruct_tag):
@@ -95,19 +106,28 @@ class QwenVLModelInfo(ModelInfo):
 _LLAMA_INFO = {
     "org": "meta-llama",
     "base_name": "Llama",
-    "instruct_tag": "Instruct",
+    "instruct_tags": [None, "Instruct"],
     "model_versions": ["3.2", "3.1"],
     "model_sizes": {"3.2": [1, 3], "3.1": [8]},
     "is_multimodal": False,
     "model_info_cls": LlamaModelInfo,
 }
 
+_LLAMA_VISION_INFO = {
+    "org": "meta-llama",
+    "base_name": "Llama",
+    "instruct_tags": [None, "Instruct"],
+    "model_versions": ["3.2"],
+    "model_sizes": {"3.2": [11, 90]},
+    "is_multimodal": True,
+    "model_info_cls": LlamaVisionModelInfo,
+}
 # Qwen text only models
 # NOTE: Qwen vision models will be registered separately
 _QWEN_INFO = {
     "org": "Qwen",
     "base_name": "Qwen",
-    "instruct_tag": "Instruct",
+    "instruct_tags": [None, "Instruct"],
     "model_versions": ["2.5"],
     "model_sizes": {"2.5": [3, 7]},
     "is_multimodal": False,
@@ -117,7 +137,7 @@ _QWEN_INFO = {
 _QWEN_VL_INFO = {
     "org": "Qwen",
     "base_name": "Qwen",
-    "instruct_tag": "Instruct",
+    "instruct_tags": ["Instruct"], # No base, only instruction tuned
     "model_versions": ["2.5"],
     "model_sizes": {"2.5": [3, 7, 32, 72]},
     "is_multimodal": True,
@@ -128,9 +148,9 @@ _QWEN_VL_INFO = {
 _GEMMA_INFO = {
     "org": "google",
     "base_name": "gemma",
-    "instruct_tag": "it",
+    "instruct_tags": ["pt", "it"], # pt = base, it = instruction tuned
     "model_versions": ["3"],
-    "model_sizes": {"3": [1, 4]},
+    "model_sizes": {"3": [1, 4, 12, 27]},
     "is_multimodal": True,
 }
 
@@ -138,7 +158,7 @@ _PHI_INFO = {
     "org": "microsoft",
     "base_name": "Phi",
     "model_versions": ["4"],
-    "instruct_tag": None,
+    "instruct_tag": [None],
     "is_multimodal": True,
 }
 
@@ -157,7 +177,7 @@ def register_model(
     instruct_tag: str = INSTRUCT_TAG,
     name: str = None,
 ):
-    name = name or model_info_cls.construct_model_name(base_name, version, size, quant_type, instruct_tag)
+    name = name or model_info_cls.construct_model_name(base_name=base_name, version=version, size=size, quant_type=quant_type, instruct_tag=instruct_tag)
     key = f"{org}/{name}" 
 
     if key in MODEL_REGISTRY:
@@ -178,7 +198,7 @@ def register_model(
 def _register_models(model_info: dict):
     org = model_info["org"]
     base_name = model_info["base_name"]
-    instruct_tag = model_info["instruct_tag"]
+    instruct_tags = model_info["instruct_tags"]
     model_versions = model_info["model_versions"]
     model_sizes = model_info["model_sizes"]
     is_multimodal = model_info["is_multimodal"]
@@ -186,28 +206,15 @@ def _register_models(model_info: dict):
 
     for version in model_versions:
         for size in model_sizes[version]:
-            for quant_type in [None, "bnb", "unsloth"]:
-                # Register base model
-                _org = "unsloth" if quant_type is not None else org
-                if not model_info.get("instruction_tuned_only", False):
+            for instruct_tag in instruct_tags:
+                for quant_type in [None, "bnb", "unsloth"]:
+                    _org = "unsloth" if quant_type is not None else org
                     register_model(
-                        model_info_cls,
-                        _org,
-                        base_name,
-                        version,
-                        size,
-                        instruct_tag=None,
-                        quant_type=quant_type,
-                        is_multimodal=is_multimodal,
-                    )
-                # Register instruction tuned model if instruct_tag is not None
-                if instruct_tag:
-                    register_model(
-                        model_info_cls,
-                        _org,
-                        base_name,
-                        version,
-                        size,
+                        model_info_cls=model_info_cls,
+                        org=_org,
+                        base_name=base_name,
+                        version=version,
+                        size=size,
                         instruct_tag=instruct_tag,
                         quant_type=quant_type,
                         is_multimodal=is_multimodal,
