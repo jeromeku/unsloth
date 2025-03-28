@@ -8,6 +8,7 @@ INSTRUCT_TAG = "Instruct"
 _IS_LLAMA_REGISTERED = False
 _IS_QWEN_REGISTERED = False
 _IS_GEMMA_REGISTERED = False
+_IS_QWEN_VL_REGISTERED = False
 
 def construct_model_key(org, base_name, version, size, quant_type, instruct_tag):
     key = f"{org}/{base_name}-{version}-{size}B"
@@ -120,6 +121,7 @@ _QWEN_VL_INFO = {
     "model_versions": ["2.5"],
     "model_sizes": {"2.5": [3, 7, 32, 72]},
     "is_multimodal": True,
+    "instruction_tuned_only": True,
     "model_info_cls": QwenVLModelInfo,
 }
 
@@ -187,16 +189,17 @@ def _register_models(model_info: dict):
             for quant_type in [None, "bnb", "unsloth"]:
                 # Register base model
                 _org = "unsloth" if quant_type is not None else org
-                register_model(
-                    model_info_cls,
-                    _org,
-                    base_name,
-                    version,
-                    size,
-                    instruct_tag=None,
-                    quant_type=quant_type,
-                    is_multimodal=is_multimodal,
-                )
+                if not model_info.get("instruction_tuned_only", False):
+                    register_model(
+                        model_info_cls,
+                        _org,
+                        base_name,
+                        version,
+                        size,
+                        instruct_tag=None,
+                        quant_type=quant_type,
+                        is_multimodal=is_multimodal,
+                    )
                 # Register instruction tuned model if instruct_tag is not None
                 if instruct_tag:
                     register_model(
@@ -252,6 +255,11 @@ def get_qwen_models():
         register_qwen_models()
     
     return {k: v for k, v in MODEL_REGISTRY.items() if v.base_name == "Qwen"}
+
+def get_qwen_vl_models():
+    if not _IS_QWEN_VL_REGISTERED:
+        register_qwen_vl_models()
+    return {k: v for k, v in MODEL_REGISTRY.items() if v.base_name == "Qwen" and v.is_multimodal}
 
 def get_gemma_models():
     if not _IS_GEMMA_REGISTERED:

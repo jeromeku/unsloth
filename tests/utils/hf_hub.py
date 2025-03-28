@@ -16,7 +16,11 @@ def formatted_int(value: int) -> str:
         return f"{float(value) // 1000000:,.1f}M"
     
 def get_model_info(model_id: str, properties: list[str] = ['safetensors', 'lastModified']) -> ModelInfo:
-    return api.model_info(model_id, expand=properties)
+    try:
+        model_info: ModelInfo = api.model_info(model_id, expand=properties)
+    except Exception as e:
+        model_info = None
+    return model_info
 
 def retrieve_models(properties: list[str] = ["downloads", "tags"], full: bool = False, sort: str = "downloads", author: str = "unsloth", search: str = None, limit: int = 10) -> ModelInfo:
     """
