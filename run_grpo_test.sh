@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Train args
-MODEL_NAME="llama-meta-3.2-1b"
+MODEL_NAME="llama-meta-3.1-1b"
 MAX_STEPS=${1:-250}
 LORA_RANK=${2:-32}
 USE_VLLM=${3:-false}
