@@ -5,6 +5,10 @@ BNB_QUANTIZED_TAG = "bnb-4bit"
 UNSLOTH_DYNAMIC_QUANT_TAG = "unsloth" + "-" + BNB_QUANTIZED_TAG
 INSTRUCT_TAG = "Instruct"
 
+_IS_LLAMA_REGISTERED = False
+_IS_QWEN_REGISTERED = False
+_IS_GEMMA_REGISTERED = False
+
 # Llama text only models
 _LLAMA_INFO = {
     "org": "meta-llama",
@@ -42,6 +46,7 @@ _PHI_INFO = {
     "is_multimodal": True,
 }
 
+
 def construct_model_key(org, base_name, version, size, quant_type, instruct_tag):
     key = f"{org}/{base_name}-{version}-{size}B"
     if instruct_tag:
@@ -52,6 +57,7 @@ def construct_model_key(org, base_name, version, size, quant_type, instruct_tag)
         elif quant_type == "unsloth":
             key = "-".join([key, UNSLOTH_DYNAMIC_QUANT_TAG])
     return key
+
 
 @dataclass
 class ModelInfo:
@@ -67,8 +73,15 @@ class ModelInfo:
     quant_type: Literal["bnb", "unsloth"] = None
 
     def __post_init__(self):
-        self.name = construct_model_key(self.org, self.base_name, self.version, self.size, self.quant_type, self.instruct_tag)
-        
+        self.name = construct_model_key(
+            self.org,
+            self.base_name,
+            self.version,
+            self.size,
+            self.quant_type,
+            self.instruct_tag,
+        )
+
     @property
     def model_path(
         self,
@@ -77,7 +90,6 @@ class ModelInfo:
 
 
 MODEL_REGISTRY = {}
-
 
 
 def register_model(
@@ -92,7 +104,7 @@ def register_model(
     key = construct_model_key(org, base_name, version, size, quant_type, instruct_tag)
     if key in MODEL_REGISTRY:
         raise ValueError(f"Model {key} already registered")
-    
+
     MODEL_REGISTRY[key] = ModelInfo(
         org=org,
         base_name=base_name,
@@ -104,7 +116,7 @@ def register_model(
     )
 
 
-def register_models(model_info: dict):
+def _register_models(model_info: dict):
     org = model_info["org"]
     base_name = model_info["base_name"]
     instruct_tag = model_info["instruct_tag"]
@@ -138,44 +150,47 @@ def register_models(model_info: dict):
                         is_multimodal=is_multimodal,
                     )
 
+
 def register_llama_models():
-    register_models(_LLAMA_INFO)
+    global _IS_LLAMA_REGISTERED
+    if _IS_LLAMA_REGISTERED:
+        return
+    _register_models(_LLAMA_INFO)
+    _IS_LLAMA_REGISTERED = True
 
 
 def register_qwen_models():
-    register_models(_QWEN_INFO)
+    global _IS_QWEN_REGISTERED
+    if _IS_QWEN_REGISTERED:
+        return
+
+    _register_models(_QWEN_INFO)
+    _IS_QWEN_REGISTERED = True
 
 
 def register_gemma_models():
-    register_models(_GEMMA_INFO)
+    global _IS_GEMMA_REGISTERED
+    _register_models(_GEMMA_INFO)
+    _IS_GEMMA_REGISTERED = True
 
 
-# QWEN = {
-#     "2.5": ["Qwen2.5-3B-Instruct", "Qwen2.5-7B-Instruct"],
-# }
-# GEMMA = {
-#     "3": ["gemma-3-1b-it"],
-# }
-# PHI = {
-#     "4": ["phi-4", ]
-# }
-# HF_TEST_MODELS = {
-#     "llama-hf": "meta-llama/Llama-3.2-1B-Instruct",
-#     "gemma-hf": "google/gemma-3-1b-it",
-#     "qwen-hf": "Qwen/Qwen2-VL-2B-Instruct-bnb-4bit",
-# }
+def get_llama_models():
+    if not _IS_LLAMA_REGISTERED:
+        register_llama_models()
 
-# UNSLOTH_TEST_MODELS = {
-#     "llama-unsloth-1b": "unsloth/Llama-3.2-1B-Instruct",
-#     "llama-unsloth-3b": "unsloth/Llama-3.2-3B-Instruct",
-#     "gemma-unsloth": "unsloth/gemma-3-1b-it",
-#     "qwen-unsloth": "unsloth/Qwen2-VL-2B-Instruct-bnb-4bit",
-# }
+    return {k: v for k, v in MODEL_REGISTRY.items() if v.base_name == "Llama"}
 
-# TEST_MODELS = {
-#     **HF_TEST_MODELS,
-#     **UNSLOTH_TEST_MODELS,
-# }
+def get_qwen_models():
+    if not _IS_QWEN_REGISTERED:
+        register_qwen_models()
+    
+    return {k: v for k, v in MODEL_REGISTRY.items() if v.base_name == "Qwen"}
+
+def get_gemma_models():
+    if not _IS_GEMMA_REGISTERED:
+        register_gemma_models()
+    
+    return {k: v for k, v in MODEL_REGISTRY.items() if v.base_name == "gemma"}
 
 if __name__ == "__main__":
     register_llama_models()

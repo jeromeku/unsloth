@@ -1,12 +1,16 @@
 from huggingface_hub import ModelInfo as HfModelInfo
 from utils.hf_hub import get_model_info
-from utils.model_registry import MODEL_REGISTRY, ModelInfo, register_llama_models
+from utils.model_registry import MODEL_REGISTRY, ModelInfo, get_llama_models
 
-if __name__ == "__main__":
-    register_llama_models()
-    model_ids = list(MODEL_REGISTRY.keys())
+
+def test_model_uploaded(model_ids: list[str]):
     for _id in model_ids:
         try:
             model_info: HfModelInfo = get_model_info(_id, properties=['safetensors', 'lastModified'])
         except Exception as e:
-            print(f"{_id} not found")
+            raise AssertionError(f"{_id} not found")
+        
+if __name__ == "__main__":
+    llama_models = get_llama_models()
+    test_model_uploaded(list(llama_models.keys()))
+    
