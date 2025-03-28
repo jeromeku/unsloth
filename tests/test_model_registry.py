@@ -4,6 +4,9 @@ from utils.model_registry import (
     MODEL_REGISTRY,
     ModelInfo,
     get_llama_models,
+    get_llama_vision_models,
+    get_phi_instruct_models,
+    get_phi_models,
     get_qwen_models,
     get_qwen_vl_models,
 )
@@ -21,15 +24,16 @@ def test_model_uploaded(model_ids: list[str]):
 
 if __name__ == "__main__":
 
-    for method in [get_llama_models, get_qwen_models, get_qwen_vl_models]:
+    for method in [get_llama_models, get_llama_vision_models, get_qwen_models, get_qwen_vl_models, get_phi_models, get_phi_instruct_models]:
         
         models = method()
-        print(f"Models registered: {len(models)}")
+        model_name = next(iter(models.values())).base_name
+        print(f"{model_name}: {len(models)} registered")
         for model_info in models.values():
             print(f"  {model_info.model_path}")
-        missing_modes = test_model_uploaded(list(models.keys()))
+        missing_models = test_model_uploaded(list(models.keys()))
     
-        if missing_modes:
+        if missing_models:
             print("--------------------------------")
-            print(f"Missing models: {missing_modes}")
+            print(f"Missing models: {missing_models}")
             print("--------------------------------")

@@ -1,15 +1,23 @@
 from dataclasses import dataclass, field
-from typing import Literal
+from functools import partial
+from typing import Callable, Literal
 
 BNB_QUANTIZED_TAG = "bnb-4bit"
 UNSLOTH_DYNAMIC_QUANT_TAG = "unsloth" + "-" + BNB_QUANTIZED_TAG
 INSTRUCT_TAG = "Instruct"
+QUANT_TYPES = [None, "bnb", "unsloth"]
 
 _IS_LLAMA_REGISTERED = False
 _IS_LLAMA_VISION_REGISTERED = False
+
 _IS_QWEN_REGISTERED = False
-_IS_GEMMA_REGISTERED = False
 _IS_QWEN_VL_REGISTERED = False
+
+_IS_GEMMA_REGISTERED = False
+
+_IS_PHI_REGISTERED = False
+_IS_PHI_INSTRUCT_REGISTERED = False
+
 
 def construct_model_key(org, base_name, version, size, quant_type, instruct_tag):
     key = f"{org}/{base_name}-{version}-{size}B"
@@ -29,7 +37,7 @@ class ModelInfo:
     base_name: str
     version: str
     size: int
-    name: str = None # full model name, constructed from base_name, version, and size unless provided
+    name: str = None  # full model name, constructed from base_name, version, and size unless provided
     is_multimodal: bool = False
     instruct_tag: str = None
     quant_type: Literal["bnb", "unsloth"] = None
@@ -57,16 +65,17 @@ class ModelInfo:
             elif quant_type == "unsloth":
                 key = "-".join([key, UNSLOTH_DYNAMIC_QUANT_TAG])
         return key
-    
+
     @classmethod
     def construct_model_name(cls, base_name, version, size, quant_type, instruct_tag):
         raise NotImplementedError("Subclass must implement this method")
-    
+
     @property
     def model_path(
         self,
     ) -> str:
         return f"{self.org}/{self.name}"
+
 
 class LlamaModelInfo(ModelInfo):
     @classmethod
@@ -84,7 +93,8 @@ class LlamaVisionModelInfo(ModelInfo):
         key = cls.append_instruct_tag(key, instruct_tag)
         key = cls.append_quant_type(key, quant_type)
         return key
-    
+
+
 class QwenModelInfo(ModelInfo):
     @classmethod
     def construct_model_name(cls, base_name, version, size, quant_type, instruct_tag):
@@ -92,6 +102,7 @@ class QwenModelInfo(ModelInfo):
         key = cls.append_instruct_tag(key, instruct_tag)
         key = cls.append_quant_type(key, quant_type)
         return key
+
 
 class QwenVLModelInfo(ModelInfo):
     @classmethod
@@ -101,8 +112,17 @@ class QwenVLModelInfo(ModelInfo):
         key = cls.append_quant_type(key, quant_type)
         return key
 
+
+class PhiModelInfo(ModelInfo):
+    @classmethod
+    def construct_model_name(cls, base_name, version, size, quant_type, instruct_tag):
+        key = f"{base_name}-{version}"
+        key = cls.append_instruct_tag(key, instruct_tag)
+        key = cls.append_quant_type(key, quant_type)
+        return key
+
+
 # Llama text only models
-# NOTE: Llama vision models will be registered separately
 _LLAMA_INFO = {
     "org": "meta-llama",
     "base_name": "Llama",
@@ -137,7 +157,7 @@ _QWEN_INFO = {
 _QWEN_VL_INFO = {
     "org": "Qwen",
     "base_name": "Qwen",
-    "instruct_tags": ["Instruct"], # No base, only instruction tuned
+    "instruct_tags": ["Instruct"],  # No base, only instruction tuned
     "model_versions": ["2.5"],
     "model_sizes": {"2.5": [3, 7, 32, 72]},
     "is_multimodal": True,
@@ -148,7 +168,7 @@ _QWEN_VL_INFO = {
 _GEMMA_INFO = {
     "org": "google",
     "base_name": "gemma",
-    "instruct_tags": ["pt", "it"], # pt = base, it = instruction tuned
+    "instruct_tags": ["pt", "it"],  # pt = base, it = instruction tuned
     "model_versions": ["3"],
     "model_sizes": {"3": [1, 4, 12, 27]},
     "is_multimodal": True,
@@ -156,10 +176,22 @@ _GEMMA_INFO = {
 
 _PHI_INFO = {
     "org": "microsoft",
+    "base_name": "phi",
+    "model_versions": ["4"],
+    "model_sizes": {"4": [None]},  # -1 means only 1 size
+    "instruct_tags": [None],
+    "is_multimodal": False,
+    "model_info_cls": PhiModelInfo,
+}
+
+_PHI_INSTRUCT_INFO = {
+    "org": "microsoft",
     "base_name": "Phi",
     "model_versions": ["4"],
-    "instruct_tag": [None],
-    "is_multimodal": True,
+    "model_sizes": {"4": [None]},  # -1 means only 1 size
+    "instruct_tags": ["mini-instruct"],
+    "is_multimodal": False,
+    "model_info_cls": PhiModelInfo,
 }
 
 
@@ -177,8 +209,14 @@ def register_model(
     instruct_tag: str = INSTRUCT_TAG,
     name: str = None,
 ):
-    name = name or model_info_cls.construct_model_name(base_name=base_name, version=version, size=size, quant_type=quant_type, instruct_tag=instruct_tag)
-    key = f"{org}/{name}" 
+    name = name or model_info_cls.construct_model_name(
+        base_name=base_name,
+        version=version,
+        size=size,
+        quant_type=quant_type,
+        instruct_tag=instruct_tag,
+    )
+    key = f"{org}/{name}"
 
     if key in MODEL_REGISTRY:
         raise ValueError(f"Model {key} already registered")
@@ -207,7 +245,7 @@ def _register_models(model_info: dict):
     for version in model_versions:
         for size in model_sizes[version]:
             for instruct_tag in instruct_tags:
-                for quant_type in [None, "bnb", "unsloth"]:
+                for quant_type in QUANT_TYPES:
                     _org = "unsloth" if quant_type is not None else org
                     register_model(
                         model_info_cls=model_info_cls,
@@ -229,6 +267,14 @@ def register_llama_models():
     _IS_LLAMA_REGISTERED = True
 
 
+def register_llama_vision_models():
+    global _IS_LLAMA_VISION_REGISTERED
+    if _IS_LLAMA_VISION_REGISTERED:
+        return
+    _register_models(_LLAMA_VISION_INFO)
+    _IS_LLAMA_VISION_REGISTERED = True
+
+
 def register_qwen_models():
     global _IS_QWEN_REGISTERED
     if _IS_QWEN_REGISTERED:
@@ -237,13 +283,15 @@ def register_qwen_models():
     _register_models(_QWEN_INFO)
     _IS_QWEN_REGISTERED = True
 
+
 def register_qwen_vl_models():
     global _IS_QWEN_VL_REGISTERED
     if _IS_QWEN_VL_REGISTERED:
         return
-    
+
     _register_models(_QWEN_VL_INFO)
     _IS_QWEN_VL_REGISTERED = True
+
 
 def register_gemma_models():
     global _IS_GEMMA_REGISTERED
@@ -251,28 +299,89 @@ def register_gemma_models():
     _IS_GEMMA_REGISTERED = True
 
 
+def register_phi_models():
+    global _IS_PHI_REGISTERED
+    if _IS_PHI_REGISTERED:
+        return
+    _register_models(_PHI_INFO)
+    _IS_PHI_REGISTERED = True
+
+
+def register_phi_instruct_models():
+    global _IS_PHI_INSTRUCT_REGISTERED
+    if _IS_PHI_INSTRUCT_REGISTERED:
+        return
+
+    _register_models(_PHI_INSTRUCT_INFO)
+    _IS_PHI_INSTRUCT_REGISTERED = True
+
+
+def _base_name_filter(model_info: ModelInfo, base_name: str):
+    return model_info.base_name == base_name
+
+
+def _get_models(filter_func: Callable[[ModelInfo], bool] = _base_name_filter):
+    return {k: v for k, v in MODEL_REGISTRY.items() if filter_func(v)}
+
+
 def get_llama_models():
     if not _IS_LLAMA_REGISTERED:
         register_llama_models()
 
-    return {k: v for k, v in MODEL_REGISTRY.items() if v.base_name == "Llama"}
+    return _get_models(partial(_base_name_filter, base_name=_LLAMA_INFO["base_name"]))
+
+
+def get_llama_vision_models():
+    if not _IS_LLAMA_VISION_REGISTERED:
+        register_llama_vision_models()
+
+    return _get_models(
+        lambda model_info: model_info.base_name == _LLAMA_VISION_INFO["base_name"]
+        and model_info.is_multimodal
+    )
+
 
 def get_qwen_models():
     if not _IS_QWEN_REGISTERED:
         register_qwen_models()
-    
-    return {k: v for k, v in MODEL_REGISTRY.items() if v.base_name == "Qwen"}
+
+    return _get_models(
+        lambda model_info: model_info.base_name == _QWEN_INFO["base_name"]
+    )
+
 
 def get_qwen_vl_models():
     if not _IS_QWEN_VL_REGISTERED:
         register_qwen_vl_models()
-    return {k: v for k, v in MODEL_REGISTRY.items() if v.base_name == "Qwen" and v.is_multimodal}
+    return _get_models(
+        lambda model_info: model_info.base_name == _QWEN_VL_INFO["base_name"]
+    )
+
 
 def get_gemma_models():
     if not _IS_GEMMA_REGISTERED:
         register_gemma_models()
-    
-    return {k: v for k, v in MODEL_REGISTRY.items() if v.base_name == "gemma"}
+
+    return _get_models(
+        lambda model_info: model_info.base_name == _GEMMA_INFO["base_name"]
+    )
+
+
+def get_phi_models():
+    if not _IS_PHI_REGISTERED:
+        register_phi_models()
+    return _get_models(
+        lambda model_info: model_info.base_name == _PHI_INFO["base_name"]
+    )
+
+
+def get_phi_instruct_models():
+    if not _IS_PHI_INSTRUCT_REGISTERED:
+        register_phi_instruct_models()
+    return _get_models(
+        lambda model_info: model_info.base_name == _PHI_INSTRUCT_INFO["base_name"]
+    )
+
 
 if __name__ == "__main__":
     register_llama_models()
