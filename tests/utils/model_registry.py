@@ -33,8 +33,7 @@ class ModelInfo:
     quant_type: Literal["bnb", "unsloth"] = None
 
     def __post_init__(self):
-        self.name = self.name or self.construct_model_key(
-            self.org,
+        self.name = self.name or self.construct_model_name(
             self.base_name,
             self.version,
             self.size,
@@ -58,11 +57,8 @@ class ModelInfo:
         return key
     
     @classmethod
-    def construct_model_key(cls, org, base_name, version, size, quant_type, instruct_tag):
-        key = f"{org}/{base_name}-{version}-{size}B"
-        key = cls.append_instruct_tag(key, instruct_tag)
-        key = cls.append_quant_type(key, quant_type)
-        return key
+    def construct_model_name(cls, base_name, version, size, quant_type, instruct_tag):
+        raise NotImplementedError("Subclass must implement this method")
     
     @property
     def model_path(
@@ -71,16 +67,27 @@ class ModelInfo:
         return f"{self.org}/{self.name}"
 
 class LlamaModelInfo(ModelInfo):
-    pass
-
-class QwenModelInfo(ModelInfo):
-    @classmethod
-    def construct_model_key(cls, org, base_name, version, size, quant_type, instruct_tag):
-        key = f"{org}/{base_name}{version}-{size}B"
+    def construct_model_name(cls, base_name, version, size, quant_type, instruct_tag):
+        key = f"{base_name}-{version}-{size}B"
         key = cls.append_instruct_tag(key, instruct_tag)
         key = cls.append_quant_type(key, quant_type)
         return key
-    
+
+class QwenModelInfo(ModelInfo):
+    @classmethod
+    def construct_model_name(cls, base_name, version, size, quant_type, instruct_tag):
+        key = f"{base_name}{version}-{size}B"
+        key = cls.append_instruct_tag(key, instruct_tag)
+        key = cls.append_quant_type(key, quant_type)
+        return key
+
+class QwenVLModelInfo(ModelInfo):
+    @classmethod
+    def construct_model_name(cls, base_name, version, size, quant_type, instruct_tag):
+        key = f"{base_name}{version}-VL-{size}B"
+        key = cls.append_instruct_tag(key, instruct_tag)
+        key = cls.append_quant_type(key, quant_type)
+        return key
 
 # Llama text only models
 # NOTE: Llama vision models will be registered separately
@@ -106,6 +113,16 @@ _QWEN_INFO = {
     "model_info_cls": QwenModelInfo,
 }
 
+_QWEN_VL_INFO = {
+    "org": "Qwen",
+    "base_name": "Qwen",
+    "instruct_tag": "Instruct",
+    "model_versions": ["2.5"],
+    "model_sizes": {"2.5": [3, 7, 32, 72]},
+    "is_multimodal": True,
+    "model_info_cls": QwenVLModelInfo,
+}
+
 _GEMMA_INFO = {
     "org": "google",
     "base_name": "gemma",
@@ -128,6 +145,7 @@ MODEL_REGISTRY = {}
 
 
 def register_model(
+    model_info_cls: ModelInfo,
     org: str,
     base_name: str,
     version: str,
@@ -137,12 +155,13 @@ def register_model(
     instruct_tag: str = INSTRUCT_TAG,
     name: str = None,
 ):
-    key = f"{org}/{name}" if name else construct_model_key(org, base_name, version, size, quant_type, instruct_tag)
-    
+    name = name or model_info_cls.construct_model_name(base_name, version, size, quant_type, instruct_tag)
+    key = f"{org}/{name}" 
+
     if key in MODEL_REGISTRY:
         raise ValueError(f"Model {key} already registered")
 
-    MODEL_REGISTRY[key] = ModelInfo(
+    MODEL_REGISTRY[key] = model_info_cls(
         org=org,
         base_name=base_name,
         version=version,
@@ -161,6 +180,7 @@ def _register_models(model_info: dict):
     model_versions = model_info["model_versions"]
     model_sizes = model_info["model_sizes"]
     is_multimodal = model_info["is_multimodal"]
+    model_info_cls = model_info["model_info_cls"]
 
     for version in model_versions:
         for size in model_sizes[version]:
@@ -168,6 +188,7 @@ def _register_models(model_info: dict):
                 # Register base model
                 _org = "unsloth" if quant_type is not None else org
                 register_model(
+                    model_info_cls,
                     _org,
                     base_name,
                     version,
@@ -179,6 +200,7 @@ def _register_models(model_info: dict):
                 # Register instruction tuned model if instruct_tag is not None
                 if instruct_tag:
                     register_model(
+                        model_info_cls,
                         _org,
                         base_name,
                         version,
@@ -210,19 +232,7 @@ def register_qwen_vl_models():
     if _IS_QWEN_VL_REGISTERED:
         return
     
-    org = _QWEN_INFO["org"]
-    base_name = _QWEN_INFO["base_name"]
-    version = "2.5"
-    sizes = [3, 7, 32, 72]
-    instruct_tag = _QWEN_INFO["instruct_tag"]
-
-
-    for size in sizes:
-        name = f"{base_name}{version}-VL-{size}B"
-        for it in [None, instruct_tag]:
-            for quant_type in [None, "bnb", "unsloth"]:
-                register_model(org, base_name, version, size, quant_type=quant_type, is_multimodal=True, instruct_tag=it, name=name)
-    
+    _register_models(_QWEN_VL_INFO)
     _IS_QWEN_VL_REGISTERED = True
 
 def register_gemma_models():
