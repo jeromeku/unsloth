@@ -1,4 +1,8 @@
 # ruff: noqa
+import sys
+from pathlib import Path
+REPO_ROOT = Path(__file__).parents[2]
+sys.path.append(str(REPO_ROOT))
 
 import os
 import shutil
@@ -10,7 +14,7 @@ import torch
 from datasets import Dataset, load_dataset
 
 from trl import GRPOConfig, GRPOTrainer
-
+from tests.utils.hf_utils import PeftStatsCallback
 
 from vllm import SamplingParams
 import argparse
@@ -315,6 +319,7 @@ def main(args):
         ],
         args=training_args,
         train_dataset=dataset,
+        callbacks=[PeftStatsCallback()],
     )
     
     with delimiter_context("Example batch"):
@@ -327,12 +332,10 @@ def main(args):
     with delimiter_context("Training"):
         trainer.train()
 
-
-    with delimiter_context("Checking lora weights"):
-        for name, param in model.named_parameters():
-            if "lora_B" in name:
-                if param.eq(0).all():
-                    print(f"!!WARNING!! {name} is all zeros!  This indicates that the LoRA weights were not trained!")
+    # Sanity check that lora_B weights were updated
+    lora_B_params = {n: p for n, p in model.named_parameters() if "lora_B" in n}
+    if all(p.eq(0).all() for p in lora_B_params.values()):
+        print("!!WARNING!! All LoRA B weights are zero! This indicates that the model was not trained!")
 
     if fast_inference:
         with delimiter_context("Model reasoning after training", delimiter="*"):

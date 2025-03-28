@@ -39,22 +39,27 @@ from trl import SFTTrainer
 
 
 class PeftStatsCallback(TrainerCallback):
-    def __init__(self, lora_params=["lora_B"], step_interval=10):
-        self.lora_params = lora_params
+    def __init__(self,  step_interval=10):
         self.step_interval = step_interval
 
-    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+    def on_step_end(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        **kwargs,
+    ):
         if state.global_step % self.step_interval == 0:
             model = kwargs["model"]
-            named_params = {n: p for n, p in model.named_parameters() if any(s in n for s in self.lora_params)}
-            
-            for name, param in named_params.items():
-                print(f"Step {state.global_step}:")
-                print(f"Parameter: {name}")
-                print(f"  Min: {param.min().item():.4f}")
-                print(f"  Max: {param.max().item():.4f}")
-                print(f"  Mean: {param.mean().item():.4f}")
-                print(f"  Std: {param.std().item():.4f}")
+
+            lora_B_params = [
+                p for n, p in model.named_parameters() if "lora_B" in n
+            ]
+            if all(p.eq(0).all() for p in lora_B_params):
+                print(
+                    f"Step{state.global_step}: !!WARNING!! All LoRA B weights are zero! This might indicate that model is being trained..."
+                )
+
 
 @torch.inference_mode()
 def generate_responses(
@@ -68,7 +73,9 @@ def generate_responses(
     skip_special_tokens: bool = True,
     dtype: torch.dtype = None,
 ):
-    inputs = [tokenizer(prompt, return_tensors="pt") for _ in range(num_generations)]
+    inputs = [
+        tokenizer(prompt, return_tensors="pt") for _ in range(num_generations)
+    ]
     keys = inputs[0].keys()
     batched_inputs = {
         key: torch.cat([input[key] for input in inputs], dim=0).to(model.device)
@@ -88,7 +95,9 @@ def generate_responses(
             temperature=temperature,
         )
 
-    responses = tokenizer.batch_decode(outputs, skip_special_tokens=skip_special_tokens)
+    responses = tokenizer.batch_decode(
+        outputs, skip_special_tokens=skip_special_tokens
+    )
     return responses
 
 
@@ -270,8 +279,12 @@ def _convert_lora_to_linear(module: LoraLayer, adapter_name: str = "default"):
     )
     new_module.weight.data = torch.nn.Parameter(w_dq, requires_grad=False)
     if module.lora_bias[adapter_name]:
-        bias_data = module.base_layer.bias.data + module.lora_B[adapter_name].bias
-        new_module.bias.data = torch.nn.Parameter(bias_data, requires_grad=False)
+        bias_data = (
+            module.base_layer.bias.data + module.lora_B[adapter_name].bias
+        )
+        new_module.bias.data = torch.nn.Parameter(
+            bias_data, requires_grad=False
+        )
     return new_module
 
 
