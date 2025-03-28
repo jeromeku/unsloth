@@ -1,8 +1,6 @@
 from huggingface_hub import ModelInfo as HfModelInfo
 from utils.hf_hub import get_model_info
 from utils.model_registry import (
-    MODEL_REGISTRY,
-    ModelInfo,
     get_llama_models,
     get_llama_vision_models,
     get_phi_instruct_models,
@@ -14,8 +12,7 @@ from utils.model_registry import (
 
 def test_model_uploaded(model_ids: list[str]):
     missing_models = []
-    for _id in model_ids:
-        
+    for _id in model_ids:        
         model_info: HfModelInfo = get_model_info(_id, properties=['safetensors', 'lastModified'])
         if not model_info:
             missing_models.append(_id)
