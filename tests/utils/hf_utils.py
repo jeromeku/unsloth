@@ -39,7 +39,7 @@ from trl import SFTTrainer
 
 
 class PeftStatsCallback(TrainerCallback):
-    def __init__(self,  step_interval=10):
+    def __init__(self, step_interval=10):
         self.step_interval = step_interval
 
     def on_step_end(
@@ -57,7 +57,8 @@ class PeftStatsCallback(TrainerCallback):
             ]
             if all(p.eq(0).all() for p in lora_B_params):
                 print(
-                    f"Step{state.global_step}: !!WARNING!! All LoRA B weights are zero! This might indicate that model is being trained..."
+                    f"Step{state.global_step}: WARNING!! lora_B weights are zero!",
+                    "  This might indicate that model is not training properly..."
                 )
 
 

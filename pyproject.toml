@@ -21,6 +21,8 @@ maintainers = [
 classifiers = [
     "Programming Language :: Python",
 ]
+[tool.ruff]
+ignore = ["E501"]
 
 [tool.setuptools.dynamic]
 version = {attr = "unsloth.models._utils.__version__"}
