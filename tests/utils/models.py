@@ -125,8 +125,9 @@ def register_models(model_info: dict):
         for size in model_sizes[version]:
             for quant_type in [None, "bnb", "unsloth"]:
                 # Register base model
+                _org = "unsloth" if quant_type is not None else org
                 register_model(
-                    org,
+                    _org,
                     base_name,
                     version,
                     size,
@@ -137,7 +138,7 @@ def register_models(model_info: dict):
                 # Register instruction tuned model if instruct_tag is not None
                 if instruct_tag:
                     register_model(
-                        org,
+                        _org,
                         base_name,
                         version,
                         size,
