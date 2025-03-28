@@ -13,4 +13,8 @@ def test_model_uploaded(model_ids: list[str]):
 if __name__ == "__main__":
     llama_models = get_llama_models()
     test_model_uploaded(list(llama_models.keys()))
-    
+    quant_type = None
+    version = "3.2"
+    for model_info in llama_models.values():
+        if model_info.version == version and model_info.quant_type == quant_type:
+            print(f"{model_info}")
