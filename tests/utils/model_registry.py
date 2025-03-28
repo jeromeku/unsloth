@@ -9,7 +9,81 @@ _IS_LLAMA_REGISTERED = False
 _IS_QWEN_REGISTERED = False
 _IS_GEMMA_REGISTERED = False
 
+def construct_model_key(org, base_name, version, size, quant_type, instruct_tag):
+    key = f"{org}/{base_name}-{version}-{size}B"
+    if instruct_tag:
+        key = "-".join([key, instruct_tag])
+    if quant_type:
+        if quant_type == "bnb":
+            key = "-".join([key, BNB_QUANTIZED_TAG])
+        elif quant_type == "unsloth":
+            key = "-".join([key, UNSLOTH_DYNAMIC_QUANT_TAG])
+    return key
+
+
+@dataclass
+class ModelInfo:
+    org: str
+    base_name: str
+    version: str
+    size: int
+    name: str = None # full model name, constructed from base_name, version, and size unless provided
+    is_multimodal: bool = False
+    instruct_tag: str = None
+    quant_type: Literal["bnb", "unsloth"] = None
+
+    def __post_init__(self):
+        self.name = self.name or self.construct_model_key(
+            self.org,
+            self.base_name,
+            self.version,
+            self.size,
+            self.quant_type,
+            self.instruct_tag,
+        )
+
+    @staticmethod
+    def append_instruct_tag(key: str, instruct_tag: str = None):
+        if instruct_tag:
+            key = "-".join([key, instruct_tag])
+        return key
+
+    @staticmethod
+    def append_quant_type(key: str, quant_type: Literal["bnb", "unsloth"] = None):
+        if quant_type:
+            if quant_type == "bnb":
+                key = "-".join([key, BNB_QUANTIZED_TAG])
+            elif quant_type == "unsloth":
+                key = "-".join([key, UNSLOTH_DYNAMIC_QUANT_TAG])
+        return key
+    
+    @classmethod
+    def construct_model_key(cls, org, base_name, version, size, quant_type, instruct_tag):
+        key = f"{org}/{base_name}-{version}-{size}B"
+        key = cls.append_instruct_tag(key, instruct_tag)
+        key = cls.append_quant_type(key, quant_type)
+        return key
+    
+    @property
+    def model_path(
+        self,
+    ) -> str:
+        return f"{self.org}/{self.name}"
+
+class LlamaModelInfo(ModelInfo):
+    pass
+
+class QwenModelInfo(ModelInfo):
+    @classmethod
+    def construct_model_key(cls, org, base_name, version, size, quant_type, instruct_tag):
+        key = f"{org}/{base_name}{version}-{size}B"
+        key = cls.append_instruct_tag(key, instruct_tag)
+        key = cls.append_quant_type(key, quant_type)
+        return key
+    
+
 # Llama text only models
+# NOTE: Llama vision models will be registered separately
 _LLAMA_INFO = {
     "org": "meta-llama",
     "base_name": "Llama",
@@ -17,9 +91,11 @@ _LLAMA_INFO = {
     "model_versions": ["3.2", "3.1"],
     "model_sizes": {"3.2": [1, 3], "3.1": [8]},
     "is_multimodal": False,
+    "model_info_cls": LlamaModelInfo,
 }
 
 # Qwen text only models
+# NOTE: Qwen vision models will be registered separately
 _QWEN_INFO = {
     "org": "Qwen",
     "base_name": "Qwen",
@@ -27,6 +103,7 @@ _QWEN_INFO = {
     "model_versions": ["2.5"],
     "model_sizes": {"2.5": [3, 7]},
     "is_multimodal": False,
+    "model_info_cls": QwenModelInfo,
 }
 
 _GEMMA_INFO = {
@@ -47,48 +124,6 @@ _PHI_INFO = {
 }
 
 
-def construct_model_key(org, base_name, version, size, quant_type, instruct_tag):
-    key = f"{org}/{base_name}-{version}-{size}B"
-    if instruct_tag:
-        key = "-".join([key, instruct_tag])
-    if quant_type:
-        if quant_type == "bnb":
-            key = "-".join([key, BNB_QUANTIZED_TAG])
-        elif quant_type == "unsloth":
-            key = "-".join([key, UNSLOTH_DYNAMIC_QUANT_TAG])
-    return key
-
-
-@dataclass
-class ModelInfo:
-    org: str
-    base_name: str
-    version: str
-    size: int
-    name: str = field(
-        init=False
-    )  # full model name, constructed from base_name, version, and size
-    is_multimodal: bool = False
-    instruct_tag: str = None
-    quant_type: Literal["bnb", "unsloth"] = None
-
-    def __post_init__(self):
-        self.name = construct_model_key(
-            self.org,
-            self.base_name,
-            self.version,
-            self.size,
-            self.quant_type,
-            self.instruct_tag,
-        )
-
-    @property
-    def model_path(
-        self,
-    ) -> str:
-        return f"{self.org}/{self.name}"
-
-
 MODEL_REGISTRY = {}
 
 
@@ -100,8 +135,10 @@ def register_model(
     quant_type: Literal["bnb", "unsloth"] = None,
     is_multimodal: bool = False,
     instruct_tag: str = INSTRUCT_TAG,
+    name: str = None,
 ):
-    key = construct_model_key(org, base_name, version, size, quant_type, instruct_tag)
+    key = f"{org}/{name}" if name else construct_model_key(org, base_name, version, size, quant_type, instruct_tag)
+    
     if key in MODEL_REGISTRY:
         raise ValueError(f"Model {key} already registered")
 
@@ -113,6 +150,7 @@ def register_model(
         is_multimodal=is_multimodal,
         instruct_tag=instruct_tag,
         quant_type=quant_type,
+        name=name,
     )
 
 
@@ -167,6 +205,25 @@ def register_qwen_models():
     _register_models(_QWEN_INFO)
     _IS_QWEN_REGISTERED = True
 
+def register_qwen_vl_models():
+    global _IS_QWEN_VL_REGISTERED
+    if _IS_QWEN_VL_REGISTERED:
+        return
+    
+    org = _QWEN_INFO["org"]
+    base_name = _QWEN_INFO["base_name"]
+    version = "2.5"
+    sizes = [3, 7, 32, 72]
+    instruct_tag = _QWEN_INFO["instruct_tag"]
+
+
+    for size in sizes:
+        name = f"{base_name}{version}-VL-{size}B"
+        for it in [None, instruct_tag]:
+            for quant_type in [None, "bnb", "unsloth"]:
+                register_model(org, base_name, version, size, quant_type=quant_type, is_multimodal=True, instruct_tag=it, name=name)
+    
+    _IS_QWEN_VL_REGISTERED = True
 
 def register_gemma_models():
     global _IS_GEMMA_REGISTERED
